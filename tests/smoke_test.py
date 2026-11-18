@@ -298,6 +298,12 @@ def main():
         )
         with open(os.path.join(tmp, "tables", "runs.csv")) as fid:
             table = fid.read()
+        # restriction to model classes: the class of this run is kept, another class selects nothing
+        name = args.models[0].split(":")[0]
+        kept = run(cmd + ["--models", name], ROOT)
+        assert kept.count("done " + args.models[0]) == 2, "--models dropped the run of its own class"
+        other = subprocess.run(cmd + ["--models", "NoSuchModel"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        assert other.returncode != 0, "--models with an unknown class must select nothing"
         for needle in ["best_loss", "AEE", "data_dt1", "data_dt4"]:
             assert needle in table, needle + " missing from runs.csv"
         print("OK   evaluate.py / collect.py produce the result tables")

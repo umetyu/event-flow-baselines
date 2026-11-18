@@ -11,12 +11,24 @@
 | 段階 | 内容 | 状態 |
 |---|---|---|
 | 0 | コードが今の環境(PyTorch 2系)で動くか | 合成データのスモークテストは通過(CPU)。**Izar上では未実行** |
-| 1 | 配布済み学習済みモデルで論文Table 1を再現 | スクリプト準備済み。**データ未取得・未実行** |
-| 2 | 入力表現 × 記憶の比較(UZH-FPVで学習、MVSECで評価) | config 30本を生成済み。**未実行** |
-| 3 | 入力窓の長さを振る | config 9本を生成済み。**未実行** |
-| 4 | AffineObjectsで同じ比較 | 初期config 3本のみ。**未実行・メモリ使用量も未確認** |
+| 1 | 対象6モデルの配布済み重みで論文Table 1を再現 | スクリプト準備済み。**データ未取得・未実行** |
+| 2 | 対象6モデルを再学習して再現 | config 6本を生成済み。**未実行** |
+| 追加 | 記憶なしの4条件、追加シード、入力窓の長さ、AffineObjects(論文にない。再現の後) | configのみ。**未実行** |
 
 実データでの学習・評価は一切行っていません。数値はまだ1つもありません。
+
+## 再現の対象(6モデル)
+
+論文の14モデルのうち、**過去の持たせ方だけが違うANNの6モデル**に絞っています。Hebbian機構と直接比べる相手になるものです。
+
+| 記憶の持ち方 | EV-FlowNet系 | FireNet系(軽量) | コード上のクラス |
+|---|---|---|---|
+| ConvGRU(論文の主モデル) | EV-FlowNet | FireNet | `RecEVFlowNet` / `FireNet` |
+| 素のRNN | RNN-EV-FlowNet | RNN-FireNet | `RNNRecEVFlowNet` / `RNNFireNet` |
+| リーク(状態を持つニューロン) | Leaky-EV-FlowNet | Leaky-FireNet | `LeakyRecEVFlowNet` / `LeakyFireNet` |
+
+- SNNの8モデル(LIF、ALIF、PLIF、XLIF)は対象外です。配布済みの重みは手元に来るので、評価だけなら `MODELS` にクラス名を足せば加えられます。再学習の設定は用意していません。
+- さらに減らすなら、EV-FlowNet系の3つだけでも記憶の比較は成立します。
 
 ## 論文(Hagenaars et al. 2021)との対応
 
@@ -29,16 +41,12 @@
 | 保存する重み | 記載なし。公開コードは学習損失が最良のエポックを保存 | 公開コードのまま |
 | 評価 | MVSECの4系列(`outdoor_day1`、`indoor_flying1`〜`3`)でAEEと外れ値率、dt=1とdt=4 | 同じ(`mvsec_dt1`、`mvsec_dt4`) |
 | GTなしの評価 | ECDとHQFでFWL、RSAT | 同じ(`ecd`、`hqf`) |
-| 学習回数 | モデルごとに1つの結果。シード数の記載なし | 段階2は3シード(追加) |
+| 学習回数 | モデルごとに1つの結果。シード数の記載なし | 再現は1シード(seed 0) |
 
-論文にないもの(このリポジトリでの追加):
+論文にないもの(再現の後に使う追加。下の「追加の実験」):
 
-- 段階2のうち記憶なしの4条件(`evflownet-cnt`、`evflownet-voxel5`、`fireflownet-cnt`、`fireflownet-voxel5`)
-- 段階3(入力窓の長さ)と段階4(AffineObjects)
-
-論文にあって再学習の設定を用意していないもの:
-
-- SNNの8モデル(LIF、ALIF、PLIF、XLIFのEV-FlowNet版とFireNet版)。段階1では配布済みの重みで評価されます。各モデルの正確な学習設定は配布モデルの記録に入っているはずなので、入手後にそこから生成するのが確実です。
+- 記憶なしの4条件(`evflownet-cnt`、`evflownet-voxel5`、`fireflownet-cnt`、`fireflownet-voxel5`)と追加シード
+- 入力窓の長さのスイープ、AffineObjects
 
 ## 実行手順(Izar)
 
@@ -69,44 +77,57 @@ cat logs/smoke-<JOB_ID>.out      # 最後が "All smoke tests passed." なら合
 ### 1. 論文の再現(学習なし)
 
 ```bash
-sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",REFERENCE=1 cluster/eval.sbatch
+sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",MODELS=core,REFERENCE=1 cluster/eval.sbatch
 cat results/summary.md
 ```
 
-`mlruns/` にある全モデルをMVSECで評価し、[experiments/reference/hagenaars2021_table1.yml](experiments/reference/hagenaars2021_table1.yml) の論文値との差を表にします。論文は小数2桁なので、差が0.01 px程度に収まれば再現できています。ここが合わないうちは先へ進まないでください。
+`mlruns/` にある配布済みの重みのうち対象の6モデルをMVSECで評価し、[experiments/reference/hagenaars2021_table1.yml](experiments/reference/hagenaars2021_table1.yml) の論文値との差を表にします。論文は小数2桁なので、差が0.01 px程度に収まれば再現できています。ここが合わないうちは先へ進まないでください。
 
 - 参照値はPDFから機械的に書き起こしたものです。引用する前に論文と照合してください。
 - 配布モデルは古いMLflow・PyTorchで保存されています。メタデータが読めない場合でも重みを探して読むようにし、**重みが見つからないときは評価を中止します**(元コードは黙って未学習の重みで評価を続けます)。この経路は合成データで模擬して確認しましたが、実物では未確認です。
 
-### 2. 入力表現 × 記憶の比較
+### 2. 再学習して再現(6モデル)
 
 ```bash
-bash cluster/submit_train.sh configs/exp/s2_*_seed0.yml      # まず1シード(10ジョブ)
-sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step2",REFERENCE=1 cluster/eval.sbatch
+# まず1本だけ流して1エポックの時間を確認
+bash cluster/submit_train.sh configs/exp/s2_gru-evflownet-cnt_w1000_seed0.yml
+# 残りの5本
+bash cluster/submit_train.sh configs/exp/s2_{rnn,leaky}-evflownet-cnt_w1000_seed0.yml \
+                             configs/exp/s2_{gru,rnn,leaky}-firenet-cnt_w1000_seed0.yml
+# 学習後、Table 1と比較
+sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step2",MODELS=core,REFERENCE=1 cluster/eval.sbatch
 ```
 
-| 記憶 | 入力 | EV-FlowNet系 | FireNet系(軽量) |
+- 条件は論文と同じです(UZH-FPVの学習データ全部、1,000イベントごとに順伝播、10,000イベントごとに損失、128×128、バッチ8、100エポック、Adam 2e-4)。`rnn-evflownet` だけ元コードのコメントに従い学習率5e-5です。
+- 1エポックの所要時間は未計測です。最初のジョブのログ(`Epoch 0000 done | ... s`)の秒数×100が1モデルの所要時間です。3日の制限に収まらないようなら相談してください。**途中から再開する機能はありません**(`--prev_runid` で重みを引き継いだ新規学習は可能)。
+- 見積もり(未実測): 1モデル約10時間(6〜20時間)、6モデルで約2 GPU日。FireNet系はもっと短いはずです。
+- 再学習の結果は論文値と小数2桁まで一致するとは限りません。論文は1回の学習結果だけを報告しており、初期値やシードが分からないためです。
+
+## 追加の実験(論文にない。再現の後)
+
+### 記憶なしの条件と追加シード
+
+```bash
+bash cluster/submit_train.sh configs/exp/s2_{evflownet,fireflownet}-{cnt,voxel5}_w1000_seed0.yml
+```
+
+| 入力 | EV-FlowNet系 | FireNet系 | 役割 |
 |---|---|---|---|
-| なし | カウント(過去なし、下限) | `evflownet-cnt` | `fireflownet-cnt` |
-| なし | voxel 5ビン(過去を手設計で入力に) | `evflownet-voxel5` | `fireflownet-voxel5` |
-| リーク | カウント | `leaky-evflownet-cnt` | `leaky-firenet-cnt` |
-| RNN | カウント | `rnn-evflownet-cnt` | `rnn-firenet-cnt` |
-| ConvGRU | カウント(論文の主モデル) | `gru-evflownet-cnt` | `gru-firenet-cnt` |
+| カウント | `evflownet-cnt` | `fireflownet-cnt` | 下限(入力にも状態にも過去がない) |
+| voxel 5ビン | `evflownet-voxel5` | `fireflownet-voxel5` | 過去を手設計で入力に入れる |
 
-- それ以外の条件は論文と同じです(UZH-FPVの学習データ全部、1,000イベントごとに順伝播、10,000イベントごとに損失、128×128、バッチ8、100エポック、Adam 2e-4)。`rnn-evflownet` だけ元コードのコメントに従い学習率5e-5です。
-- 1エポックの所要時間は未計測です。最初のジョブのログ(`Epoch 0000 done | ... s`)で確認し、3日の制限に収まらないようなら相談してください。**途中から再開する機能はありません**(`--prev_runid` で重みを引き継いだ新規学習は可能)。
-- 残りのシードは `configs/exp/s2_*_seed1.yml` と `seed2` です。
+残りのシードは `configs/exp/s2_*_seed1.yml` と `seed2` です。
 
-### 3. 入力窓の長さ
+### 入力窓の長さ
 
 ```bash
 bash cluster/submit_train.sh configs/exp/s3_*.yml
 sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step3" cluster/eval.sbatch
 ```
 
-`evflownet-cnt`、`evflownet-voxel5`、`gru-evflownet-cnt` について、順伝播1回あたりのイベント数を2,500、5,000、10,000に増やします(1,000は段階2に含まれます)。損失の窓は10,000イベントで固定です。「どれだけ過去を入れると良いか」の曲線になり、後でHebbian機構が狙う対象です。
+`evflownet-cnt`、`evflownet-voxel5`、`gru-evflownet-cnt` について、順伝播1回あたりのイベント数を2,500、5,000、10,000に増やします(1,000は上の実験に含まれます)。損失の窓は10,000イベントで固定です。「どれだけ過去を入れると良いか」の曲線になり、後でHebbian機構が狙う対象です。
 
-### 4. AffineObjects(初期設定のみ)
+### AffineObjects(初期設定のみ)
 
 ```bash
 bash cluster/submit_train.sh configs/exp/s4_affine_*.yml

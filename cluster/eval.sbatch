@@ -13,6 +13,7 @@
 # Evaluate runs on evaluation suites and refresh the result tables. From the repository root:
 #   sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step2" cluster/eval.sbatch
 # RUNS: run ids, run names or experiment names (wildcards allowed); empty = every run in mlruns/.
+# MODELS: model classes to keep, or "core" for the six models of the study; empty = all.
 # Add REFERENCE=1 to compare the MVSEC AEE with Table 1 of the paper.
 set -eo pipefail
 cd "${SLURM_SUBMIT_DIR:?}"
@@ -22,9 +23,9 @@ set -u
 nvidia-smi
 status=0
 # shellcheck disable=SC2086
-"$BENCHMARK_PYTHON" -u experiments/evaluate.py --suites $SUITES --runs ${RUNS:-} \
+"$BENCHMARK_PYTHON" -u experiments/evaluate.py --suites $SUITES --runs ${RUNS:-} --models ${MODELS:-} \
     --path_mlflow "$EVFLOW_MLRUNS" || status=$?
 # shellcheck disable=SC2086
-"$BENCHMARK_PYTHON" experiments/collect.py --runs ${RUNS:-} --path_mlflow "$EVFLOW_MLRUNS" \
+"$BENCHMARK_PYTHON" experiments/collect.py --runs ${RUNS:-} --models ${MODELS:-} --path_mlflow "$EVFLOW_MLRUNS" \
     ${REFERENCE:+--reference}
 exit $status

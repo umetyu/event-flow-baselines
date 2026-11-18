@@ -9,6 +9,11 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Models of Hagenaars et al. 2021 that differ only in how the network keeps the past (class names in
+# models/model.py): gated recurrence (the paper's "EV-FlowNet"/"FireNet"), vanilla recurrence and
+# leaky neurons, for both architectures. The spiking models of the paper are left out.
+CORE_MODELS = ["RecEVFlowNet", "RNNRecEVFlowNet", "LeakyRecEVFlowNet", "FireNet", "RNNFireNet", "LeakyFireNet"]
+
 
 def _read(path):
     with open(path) as fid:
@@ -68,13 +73,19 @@ def read_metric(run_dir, key):
     return sorted(values)
 
 
-def select_runs(runs, patterns):
+def select_runs(runs, patterns, models=None):
     """
-    Runs whose id, name or experiment matches one of the shell-style patterns (all runs if empty).
+    Runs whose id, name or experiment matches one of the shell-style patterns (all runs if empty),
+    optionally restricted to model classes ("core" = CORE_MODELS, "all"/empty = no restriction).
     """
 
     import fnmatch
 
+    if models and "all" not in models:
+        wanted = set()
+        for model in models:
+            wanted.update(CORE_MODELS if model == "core" else [model])
+        runs = [run for run in runs if model_field(run, "name") in wanted]
     if not patterns:
         return runs
     return [

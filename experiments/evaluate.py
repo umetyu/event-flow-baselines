@@ -4,6 +4,7 @@ Evaluates trained (or pretrained) runs on one or more evaluation suites by calli
     python experiments/evaluate.py --suites mvsec_dt1 mvsec_dt4 --runs 's2_*'
     python experiments/evaluate.py --suites ecd hqf --runs step2        # all runs of an experiment
     python experiments/evaluate.py --suites mvsec_dt1 --runs LIFFireNet  # run id or run name
+    python experiments/evaluate.py --suites mvsec_dt1 mvsec_dt4 --models core   # the six core models only
 
 Suites: mvsec_dt1, mvsec_dt4 (AEE, as in the paper), ecd, hqf (FWL/RSAT, as in the paper),
         affine (FWL/RSAT on AffineObjects, not in the paper).
@@ -63,15 +64,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--suites", nargs="+", required=True)
     parser.add_argument("--runs", nargs="*", default=[], help="run ids, run names or experiment names (wildcards ok)")
+    parser.add_argument(
+        "--models", nargs="*", default=[], help='model classes to keep, "core" for the six core models (default: all)'
+    )
     parser.add_argument("--path_mlflow", default=os.path.join(ROOT, "mlruns"))
     parser.add_argument("--path_results", default=os.path.join(ROOT, "results_inference") + "/")
     parser.add_argument("--config_dir", default=os.path.join(ROOT, "configs", "exp"))
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    runs = select_runs(list_runs(args.path_mlflow), args.runs)
+    runs = select_runs(list_runs(args.path_mlflow), args.runs, args.models)
     if not runs:
-        raise SystemExit("No runs match {} in {}".format(args.runs, args.path_mlflow))
+        raise SystemExit("No runs match {} (models: {}) in {}".format(args.runs, args.models or "all", args.path_mlflow))
 
     failed = []
     for run in runs:

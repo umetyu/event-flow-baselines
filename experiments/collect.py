@@ -67,15 +67,18 @@ def fmt(values):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", nargs="*", default=[])
+    parser.add_argument(
+        "--models", nargs="*", default=[], help='model classes to keep, "core" for the six core models (default: all)'
+    )
     parser.add_argument("--path_mlflow", default=os.path.join(ROOT, "mlruns"))
     parser.add_argument("--path_results", default=os.path.join(ROOT, "results_inference"))
     parser.add_argument("--out", default=os.path.join(ROOT, "results"))
     parser.add_argument("--reference", action="store_true", help="compare MVSEC AEE with the paper")
     args = parser.parse_args()
 
-    runs = select_runs(list_runs(args.path_mlflow), args.runs)
+    runs = select_runs(list_runs(args.path_mlflow), args.runs, args.models)
     if not runs:
-        raise SystemExit("No runs match {} in {}".format(args.runs, args.path_mlflow))
+        raise SystemExit("No runs match {} (models: {}) in {}".format(args.runs, args.models or "all", args.path_mlflow))
     os.makedirs(args.out, exist_ok=True)
 
     table, groups, info = [], {}, {}
