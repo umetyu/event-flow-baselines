@@ -26,6 +26,6 @@ status=0
 "$BENCHMARK_PYTHON" -u experiments/evaluate.py --suites $SUITES --runs ${RUNS:-} --models ${MODELS:-} \
     --path_mlflow "$EVFLOW_MLRUNS" || status=$?
 # shellcheck disable=SC2086
-"$BENCHMARK_PYTHON" experiments/collect.py --runs ${RUNS:-} --models ${MODELS:-} --path_mlflow "$EVFLOW_MLRUNS" \
-    ${REFERENCE:+--reference}
+# the tables always cover every run, so that jobs for different runs do not overwrite each other's rows
+"$BENCHMARK_PYTHON" experiments/collect.py --path_mlflow "$EVFLOW_MLRUNS" ${REFERENCE:+--reference}
 exit $status

@@ -11,8 +11,8 @@
 | 段階 | 内容 | 状態 |
 |---|---|---|
 | 0 | コードが今の環境(PyTorch 2系)で動くか | 合成データのスモークテストは通過(CPU)。**Izar上では未実行** |
-| 1 | 対象モデルの配布済み重みで論文Table 1を再現 | スクリプト準備済み。**データ未取得・未実行** |
-| 2 | 対象7モデルを学習して比較 | config 7本を生成済み。**未実行** |
+| 1 | 再帰の6モデル: 配布済みの重みを評価して論文Table 1と比較(再学習しない) | スクリプト準備済み。**未実行** |
+| 2 | [56]型の1モデル: UZH-FPVで学習して評価 | config準備済み。**未実行** |
 | 追加 | 記憶なしの4条件、追加シード、入力窓の長さ、AffineObjects(論文にない。再現の後) | configのみ。**未実行** |
 
 実データでの学習・評価は一切行っていません。数値はまだ1つもありません。
@@ -63,60 +63,88 @@
 
 ## 実行手順(Izar)
 
-すべてリポジトリのルートで実行します。
+方針: **再帰の6モデルは再学習せず、論文の配布済みの重みを評価します。学習するのは[56]型(`evflownet-voxel9`)の1本だけで、UZH-FPVで学習します。**
 
-### 0. セットアップとスモークテスト
+### コードをIzarに置く
+
+リポジトリは非公開なので、Izarでは `git clone` の代わりに、Macから送ったバンドル(1ファイル)を使います。
 
 ```bash
-git clone https://github.com/umetyu/event-flow-baselines.git && cd event-flow-baselines
-bash cluster/setup_izar.sh
-cat logs/smoke-<JOB_ID>.out      # 最後が "All smoke tests passed." なら合格
+# Macで
+scp -i ~/.ssh/id_ed25519 ~/codes_github/event-flow-baselines.bundle umetsu@izar.hpc.epfl.ch:~/
+ssh -i ~/.ssh/id_ed25519 umetsu@izar.hpc.epfl.ch
+# Izarで(初回)
+git clone ~/event-flow-baselines.bundle ~/projects/event-flow-baselines
+# Izarで(更新時。新しいバンドルを同じ場所に送り直してから)
+cd ~/projects/event-flow-baselines && git pull
 ```
 
-- `umetyu/event_segmentation` の `benchmarks/flow_comparison` と同じvenv(`$HOME/venvs/event-flow-torch251-cu121`、PyTorch 2.5.1+cu121)を再利用し、不足パッケージだけ追加します。別の場所にしたい場合は `EVENT_FLOW_VENV` を設定してください。
+リポジトリを公開にすれば、バンドルなしで `git clone https://github.com/umetyu/event-flow-baselines.git` と `git pull` が使えます。
+
+### 初回の一括実行
+
+```bash
+cd ~/projects/event-flow-baselines && bash cluster/bootstrap_izar.sh
+```
+
+このコマンドは順に次のことをします。
+
+1. **データの配置**: `/scratch/izar/$USER/uzh_mvsec_partition_seed0/data` の `author_training/` をリンクし、`MVSEC.zip` を展開します。置き場所は `/scratch/izar/$USER/event-flow-baselines-data` で、元のフォルダには書き込みません。場所が違う場合は引数で元フォルダを渡します。
+2. **環境**: `umetyu/event_segmentation` の `benchmarks/flow_comparison` と同じvenv(`$HOME/venvs/event-flow-torch251-cu121`、PyTorch 2.5.1+cu121)を再利用し、不足パッケージだけ追加します。
+3. **データの中身の報告**: ファイル数、解像度、GTの形、`mlruns/` にある重みを `results/data_report.txt` に書き出します。想定と違う点があれば、学習も評価も投入せずに止まります。
+4. **ジョブの投入**: スモークテスト。それが通った場合だけ、配布済みの重みの評価(重みが `mlruns/` にあるとき)と、`evflownet-voxel9` の学習、学習後の評価が続けて動きます。
+
+進み具合は `bash cluster/status.sh` で確認できます。出力をそのまま貼ってもらえれば状況が分かります。
+
 - スモークテストは合成データで全モデルの「学習 → 保存 → 評価」を通します。**動くことの確認であり、精度とは無関係です。**
+- もう一度実行すると、学習ジョブは二重に投入されます。先に `squeue -u $USER` を確認してください。
 
-### データの入手
+### 配布済みの重み(再帰の6モデル)
 
-| データ | 置き場所 | 入手元 |
-|---|---|---|
-| 論文のデータ一式(UZH-FPV学習用、MVSEC、ECD、HQF) | `$EVFLOW_DATA`(既定 `datasets/data/`)の下に `training/` `MVSEC/` `ECD/` `HQF/` | [docs/README_event_flow.md](docs/README_event_flow.md) の "Download datasets"(19.4 GB、展開後94 GB) |
-| 論文の学習済みモデル | `mlruns/` | 同 "Download models" |
-| AffineObjects | `$AFFINE_DATA`(既定 `$HOME/projects/event_segmentation/dataset`)の下に `train/h5/` `test/recordings_h5/` | 既にIzarにあるものを使用 |
-
-- 配布元はOneDriveの共有リンクです。このリポジトリを準備した環境からは到達できず、**リンクが現在も有効かは未確認**です。ブラウザで落としてからIzarへ転送する必要があるかもしれません。
-- 展開に約115 GBの空きが必要です。ホームの容量上限に注意してください。置き場所を変える場合は `export EVFLOW_DATA=/path/to/data` としてからジョブを投入します。
-
-### 1. 論文の再現(学習なし)
+論文の学習済みモデルは [docs/README_event_flow.md](docs/README_event_flow.md) の "Download models" から入手し、実行フォルダが `mlruns/<実験>/<モデル>/` になるように展開します。初回の一括実行より後に置いた場合は、次で評価します。
 
 ```bash
 sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",MODELS=core,REFERENCE=1 cluster/eval.sbatch
 cat results/summary.md
 ```
 
-`mlruns/` にある配布済みの重みのうち対象のモデルをMVSECで評価し(著者が学習した6モデル。[56]型の重みが配布物にあるかは未確認で、無ければ6モデルだけになります)、[experiments/reference/hagenaars2021_table1.yml](experiments/reference/hagenaars2021_table1.yml) の論文値との差を表にします。論文は小数2桁なので、差が0.01 px程度に収まれば再現できています。ここが合わないうちは先へ進まないでください。
+対象のモデルをMVSECで評価し、[experiments/reference/hagenaars2021_table1.yml](experiments/reference/hagenaars2021_table1.yml) の論文値との差を表にします。論文は小数2桁なので、差が0.01 px程度に収まれば再現できています。
 
+- 配布元はOneDriveの共有リンクです。このリポジトリを準備した環境からは到達できず、**リンクが現在も有効かは未確認**です。
 - 参照値はPDFから機械的に書き起こしたものです。引用する前に論文と照合してください。
 - 配布モデルは古いMLflow・PyTorchで保存されています。メタデータが読めない場合でも重みを探して読むようにし、**重みが見つからないときは評価を中止します**(元コードは黙って未学習の重みで評価を続けます)。この経路は合成データで模擬して確認しましたが、実物では未確認です。
+- [56]型の重みが配布物に含まれるかは未確認です。
 
-### 2. 学習して比較(7モデル)
+### [56]型の学習(1本だけ)
+
+初回の一括実行が投入します。手で流す場合:
 
 ```bash
-# まず1本だけ流して1エポックの時間を確認
-bash cluster/submit_train.sh configs/exp/s2_gru-evflownet-cnt_w1000_seed0.yml
-# 残りの6本
-bash cluster/submit_train.sh configs/exp/s2_{rnn,leaky}-evflownet-cnt_w1000_seed0.yml \
-                             configs/exp/s2_{gru,rnn,leaky}-firenet-cnt_w1000_seed0.yml \
-                             configs/exp/s2_evflownet-voxel9_w7500_seed0.yml
-# 学習後、Table 1と比較
-sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step2",MODELS=core,REFERENCE=1 cluster/eval.sbatch
+SBATCH_ARGS="--time=1-00:00:00" bash cluster/submit_train.sh configs/exp/s2_evflownet-voxel9_w7500_seed0.yml
+sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="s2_evflownet-voxel9_w7500_seed0",REFERENCE=1 cluster/eval.sbatch
 ```
 
-- 条件は論文と同じです(UZH-FPVの学習データ全部、1,000イベントごとに順伝播、10,000イベントごとに損失、128×128、バッチ8、100エポック、Adam 2e-4)。`rnn-evflownet` だけ元コードのコメントに従い学習率5e-5です。
-- 1エポックの所要時間は未計測です。最初のジョブのログ(`Epoch 0000 done | ... s`)の秒数×100が1モデルの所要時間です。3日の制限に収まらないようなら相談してください。**途中から再開する機能はありません**(`--prev_runid` で重みを引き継いだ新規学習は可能)。
-- 見積もり(未実測): 再帰の6モデルは1つ約10時間(6〜20時間)で合計約2 GPU日。FireNet系はもっと短いはずです。`evflownet-voxel9` は1エポックの順伝播が約1,170回(再帰モデルは8,750回)なので、ずっと短く済むはずです。
-- 比較表では[56]の行に `*` が付き、文献値として表示されます。一致の判定には含めません。
-- 再学習の結果は論文値と小数2桁まで一致するとは限りません。論文は1回の学習結果だけを報告しており、初期値やシードが分からないためです。
+- 学習データはUZH-FPVの全部、損失と最適化はこのリポジトリのもの(128×128、バッチ8、100エポック、Adam 2e-4)。入力だけ[56]に合わせています(9ビン、順伝播1回で損失1回、7,500イベント)。
+- 1エポックの順伝播は約1,170回(再帰モデルは8,750回)です。所要時間は未計測で、ログの `Epoch 0000 done | ... s` の秒数×100が全体の時間です。制限時間は1日にしてあります。**途中から再開する機能はありません。**
+- 比較表では[56]の行に `*` が付き、文献値として表示されます。学習データが違うので一致は期待できず、一致の判定にも含めません。
+
+### 再帰の6モデルを再学習する場合(今は行わない)
+
+設定は残してあります。1つ約10時間(6〜20時間、未実測)の見積もりです。
+
+```bash
+bash cluster/submit_train.sh configs/exp/s2_{gru,rnn,leaky}-evflownet-cnt_w1000_seed0.yml \
+                             configs/exp/s2_{gru,rnn,leaky}-firenet-cnt_w1000_seed0.yml
+```
+
+条件は論文と同じです(UZH-FPVの学習データ全部、1,000イベントごとに順伝播、10,000イベントごとに損失、128×128、バッチ8、100エポック、Adam 2e-4)。`rnn-evflownet` だけ元コードのコメントに従い学習率5e-5です。再学習の結果は論文値と小数2桁まで一致するとは限りません。
+
+### そのほかのデータ
+
+| データ | 置き場所 | 入手元 |
+|---|---|---|
+| ECD、HQF(GTなしの評価。任意) | `$EVFLOW_DATA` の下に `ECD/` `HQF/` | [docs/README_event_flow.md](docs/README_event_flow.md) の "Download datasets" |
+| AffineObjects(追加の実験用) | `$AFFINE_DATA`(既定 `$HOME/projects/event_segmentation/dataset`)の下に `train/h5/` `test/recordings_h5/` | 既にIzarにあるものを使用 |
 
 ## 追加の実験(論文にない。再現の後)
 

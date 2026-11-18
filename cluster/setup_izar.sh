@@ -38,5 +38,7 @@ echo "Datasets expected at:      $EVFLOW_DATA   (found: $(ls "$EVFLOW_DATA" 2>/d
 echo "Pretrained runs expected:  $EVFLOW_MLRUNS"
 echo "Free space:"; df -h "$(dirname -- "$EVFLOW_DATA")" 2>/dev/null | tail -1 || true
 echo
-sbatch --export=ALL cluster/smoke.sbatch
-echo 'Check the result with:  cat logs/smoke-<JOB_ID>.out   (must end with "All smoke tests passed.")'
+if [[ -z "${NO_SMOKE:-}" ]]; then
+    sbatch --export=ALL cluster/smoke.sbatch
+    echo 'Check the result with:  cat logs/smoke-<JOB_ID>.out   (must end with "All smoke tests passed.")'
+fi

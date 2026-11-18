@@ -1,6 +1,11 @@
 # Common environment for every job. Source it from the repository root: `source cluster/env.sh`
 # Override any of the variables below by exporting them before submitting.
 
+# machine-specific settings written by cluster/link_data.sh (not tracked by git)
+if [[ -f cluster/local.env ]]; then
+    source cluster/local.env
+fi
+
 if type module >/dev/null 2>&1; then
     module purge
     module load gcc/11.3.0 python/3.10.4
