@@ -1,3 +1,6 @@
+import os
+import random
+
 import numpy as np
 import torch
 import yaml
@@ -16,6 +19,24 @@ class YAMLParser:
         with open(file) as fid:
             yaml_config = yaml.load(fid, Loader=yaml.FullLoader)
         self.parse_dict(yaml_config)
+        self.expand_paths()
+
+    def expand_paths(self):
+        """
+        Allows environment variables (e.g. ${EVFLOW_DATA}) in dataset paths, so that the same
+        config can be used on different machines. EVFLOW_DATA defaults to datasets/data.
+        """
+
+        os.environ.setdefault("EVFLOW_DATA", "datasets/data")
+        if "path" in self._config["data"].keys() and isinstance(self._config["data"]["path"], str):
+            self._config["data"]["path"] = self.expand(self._config["data"]["path"])
+
+    @staticmethod
+    def expand(path):
+        path = os.path.expandvars(path)
+        if "$" in path:
+            raise ValueError("Environment variable not set in dataset path: " + path)
+        return path
 
     @property
     def config(self):
@@ -90,6 +111,9 @@ class YAMLParser:
         np.random.seed(np.random.get_state()[1][0] + worker_id)
 
     def init_seeds(self):
+        # the dataloader shuffles with `random` and augments with `np.random`: seed them as well
+        random.seed(self._config["loader"]["seed"])
+        np.random.seed(self._config["loader"]["seed"])
         torch.manual_seed(self._config["loader"]["seed"])
         if torch.cuda.is_available():
             torch.cuda.manual_seed(self._config["loader"]["seed"])
@@ -110,6 +134,8 @@ class YAMLParser:
 
         # overwrite with config settings
         self.parse_dict(self._config, config)
+        if "data" in config.keys() and isinstance(config["data"].get("path"), str):
+            config["data"]["path"] = self.expand(config["data"]["path"])
         self.combine_entries(config)
 
         return config

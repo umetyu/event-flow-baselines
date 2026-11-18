@@ -1,4 +1,5 @@
 import argparse
+import time
 
 import mlflow
 import torch
@@ -31,12 +32,12 @@ from models.model import (
     XLIFRecEVFlowNet,
 )
 from utils.gradients import get_grads
-from utils.utils import load_model, save_csv, save_diff, save_model
+from utils.utils import load_model, resolve_tracking_uri, save_csv, save_diff, save_model
 from utils.visualization import Visualization
 
 
 def train(args, config_parser):
-    mlflow.set_tracking_uri(args.path_mlflow)
+    mlflow.set_tracking_uri(resolve_tracking_uri(args.path_mlflow))
 
     # configs
     config = config_parser.config
@@ -46,11 +47,12 @@ def train(args, config_parser):
 
     # log config
     mlflow.set_experiment(config["experiment"])
-    mlflow.start_run()
+    mlflow.start_run(run_name=args.run_name if args.run_name else None)
     mlflow.log_params(config)
     mlflow.log_param("prev_runid", args.prev_runid)
     config = config_parser.combine_entries(config)
     print("MLflow dir:", mlflow.active_run().info.artifact_uri[:-9])
+    print("MLflow run ID:", mlflow.active_run().info.run_id, flush=True)
 
     # log git diff
     save_diff("train_diff.txt")
@@ -79,7 +81,8 @@ def train(args, config_parser):
 
     # model initialization and settings
     model = eval(config["model"]["name"])(config["model"].copy()).to(device)
-    model = load_model(args.prev_runid, model, device)
+    model = load_model(args.prev_runid, model, device, strict=args.prev_runid != "")
+    mlflow.log_param("n_params", sum(p.numel() for p in model.parameters() if p.requires_grad))
     model.train()
 
     # optimizers
@@ -91,6 +94,7 @@ def train(args, config_parser):
     best_loss = 1.0e6
     end_train = False
     grads_w = []
+    t_epoch = time.time()
 
     # training loop
     data.shuffle()
@@ -106,6 +110,14 @@ def train(args, config_parser):
 
             if data.seq_num >= len(data.files):
                 mlflow.log_metric("loss", train_loss / (data.samples + 1), step=data.epoch)
+                mlflow.log_metric("epoch_time_s", time.time() - t_epoch, step=data.epoch)
+                print(
+                    "Epoch {:04d} done | loss {:.6f} | {:.0f} s".format(
+                        data.epoch, train_loss / (data.samples + 1), time.time() - t_epoch
+                    ),
+                    flush=True,
+                )
+                t_epoch = time.time()
 
                 with torch.no_grad():
                     if train_loss / (data.samples + 1) < best_loss:
@@ -210,6 +222,11 @@ if __name__ == "__main__":
         "--prev_runid",
         default="",
         help="pre-trained model to use as starting point",
+    )
+    parser.add_argument(
+        "--run_name",
+        default="",
+        help="human-readable name of the mlflow run",
     )
     args = parser.parse_args()
 

@@ -5,3 +5,8 @@ mlruns/
 .vscode/
 *.pyc
 venv/
+datasets/
+logs/
+results/
+results_inference/
+.DS_Store

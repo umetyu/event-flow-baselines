@@ -19,9 +19,7 @@ def log_config(path_results, runid, config):
     with open(yaml_filename, "w") as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
 
-    mlflow.start_run(runid)
-    mlflow.log_artifact(yaml_filename)
-    mlflow.end_run()
+    _log_artifact(runid, yaml_filename)
 
     return eval_id
 
@@ -35,6 +33,19 @@ def log_results(runid, results, path, eval_id):
     with open(yaml_filename, "w") as outfile:
         yaml.dump(results, outfile, default_flow_style=False)
 
-    mlflow.start_run(runid)
-    mlflow.log_artifact(yaml_filename)
-    mlflow.end_run()
+    _log_artifact(runid, yaml_filename)
+
+
+def _log_artifact(runid, filename):
+    """
+    The file in the results folder is the reference copy. Attaching it to the MLflow run can fail for
+    runs created elsewhere (e.g. pretrained models whose metadata points to another machine).
+    """
+
+    try:
+        mlflow.start_run(runid)
+        mlflow.log_artifact(filename)
+    except Exception as error:
+        print("Could not attach " + filename + " to run " + runid + ": " + str(error))
+    finally:
+        mlflow.end_run()

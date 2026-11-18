@@ -32,16 +32,15 @@ from models.model import (
     XLIFRecEVFlowNet,
 )
 from utils.iwe import compute_pol_iwe
-from utils.utils import load_model, create_model_dir
+from utils.utils import load_model, create_model_dir, get_run_params, resolve_tracking_uri
 from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization, vis_activity
 
 
 def test(args, config_parser):
-    mlflow.set_tracking_uri(args.path_mlflow)
+    mlflow.set_tracking_uri(resolve_tracking_uri(args.path_mlflow))
 
-    run = mlflow.get_run(args.runid)
-    config = config_parser.merge_configs(run.data.params)
+    config = config_parser.merge_configs(get_run_params(args.runid))
 
     # configs
     if config["loader"]["batch_size"] > 1:
@@ -91,7 +90,7 @@ def test(args, config_parser):
 
     # model initialization and settings
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    model = load_model(args.runid, model, device)
+    model = load_model(args.runid, model, device, strict=True)
     model.eval()
 
     # validation metric

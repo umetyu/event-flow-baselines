@@ -55,10 +55,17 @@ class H5Loader(BaseDataLoader):
 
         # input event sequences
         self.files = []
-        for root, dirs, files in os.walk(config["data"]["path"]):
+        for root, dirs, files in os.walk(config["data"]["path"], followlinks=True):
             for file in files:
                 if file.endswith(".h5"):
                     self.files.append(os.path.join(root, file))
+        self.files.sort()  # os.walk order is filesystem dependent; sort for reproducibility
+        if len(self.files) < self.config["loader"]["batch_size"]:
+            raise FileNotFoundError(
+                "Found {} .h5 sequences in '{}', but batch_size={} needs at least that many.".format(
+                    len(self.files), config["data"]["path"], self.config["loader"]["batch_size"]
+                )
+            )
 
         # open first files
         self.open_files = []
