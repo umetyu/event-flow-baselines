@@ -316,6 +316,42 @@ def main():
         failed.append("experiment-scripts check")
         print("FAIL experiment-scripts check {}: {}".format(type(e).__name__, e))
 
+    # ---- optimization-based estimator (no training): must recover a known constant flow clearly
+    # better than predicting zero flow. Only every 6th ground-truth map is scored (stride).
+    try:
+        opt_data = os.path.join(tmp, "optdata") + "/"
+        os.makedirs(opt_data)
+        velocities = {"a.h5": (30.0, -12.0), "b.h5": (-18.0, 24.0)}
+        for i, (fname, velocity) in enumerate(velocities.items()):
+            make_sequence(os.path.join(opt_data, fname), num_events=60000, velocity=velocity, seed=10 + i)
+        out = run(
+            [sys.executable, "experiments/make_optimizer_run.py", "cmax-timestamp", "--num_events", "6000",
+             "--iters", "30", "--path_mlflow", path_mlflow],
+            ROOT,
+        )
+        opt_id = [line for line in out.splitlines() if line.startswith("Created run")][0].split("(")[1].strip(")")
+        cfg = os.path.join(tmp, "eval_opt.yml")
+        with open(cfg, "w") as fid:
+            yaml.safe_dump(eval_config(opt_data, "gtflow_dt1"), fid)
+        out = run(
+            [sys.executable, "eval_flow.py", opt_id, "--config", cfg, "--path_mlflow", path_mlflow,
+             "--path_results", path_results],
+            ROOT,
+            env=dict(os.environ, EVFLOW_EVAL_STRIDE="6"),
+        )
+        errors = read_metrics(path_results, opt_id, 0)["AEE"]
+        report = []
+        for fname, velocity in velocities.items():
+            zero_flow = math.hypot(*velocity) / 45.0  # error of predicting no motion [px per frame]
+            assert float(errors[fname]) < 0.5 * zero_flow, "AEE {} on {} is not below half of the zero-flow error {:.3f}".format(
+                errors[fname], fname, zero_flow
+            )
+            report.append("{:.3f} (zero flow {:.3f})".format(float(errors[fname]), zero_flow))
+        print("OK   CMaxOptimizer recovers a known constant flow: AEE " + ", ".join(report))
+    except Exception as e:
+        failed.append("optimizer check")
+        print("FAIL optimizer check {}: {}".format(type(e).__name__, e))
+
     # evaluation must refuse to run without weights
     with open(os.path.join(tmp, "eval.yml"), "w") as fid:
         yaml.safe_dump(eval_config(data_dir, "gtflow_dt1"), fid)

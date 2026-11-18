@@ -1,4 +1,6 @@
 import argparse
+import os
+import time
 
 import mlflow
 import numpy as np
@@ -31,6 +33,7 @@ from models.model import (
     ALIFRecEVFlowNet,
     XLIFRecEVFlowNet,
 )
+from models.optimization import CMaxOptimizer, ExternalCMax
 from utils.iwe import compute_pol_iwe
 from utils.utils import load_model, create_model_dir, get_run_params, resolve_tracking_uri
 from utils.mlflow import log_config, log_results
@@ -70,6 +73,16 @@ def test(args, config_parser):
                 config["data"]["window"] % 1.0, 0.0
             ), "Frames mode not compatible with > 1 fractional windows"
 
+    # optionally score only every n-th ground-truth map (EVFLOW_EVAL_STRIDE). Networks still process
+    # every window; optimization-based estimators only optimize the windows that are scored. The
+    # stride is stored with the evaluation settings, so strided results are never mixed up with
+    # full evaluations.
+    stride = int(os.environ.get("EVFLOW_EVAL_STRIDE", "1"))
+    assert stride >= 1
+    if stride > 1:
+        assert "metrics" in config.keys() and config["metrics"]["name"] == ["AEE"], "A stride needs AEE only"
+        config["metrics"]["stride"] = stride
+
     if not args.debug:
         # create directory for inference results
         path_results = create_model_dir(args.path_results, args.runid)
@@ -93,6 +106,12 @@ def test(args, config_parser):
     model = load_model(args.runid, model, device, strict=True)
     model.eval()
 
+    # estimators without weights that optimize the flow of every window (models/optimization.py)
+    needs_events = getattr(model, "needs_events", False)
+    if needs_events:
+        model.configure(config)
+        t_start = time.time()
+
     # validation metric
     criteria = []
     if "metrics" in config.keys():
@@ -112,6 +131,7 @@ def test(args, config_parser):
 
     # inference loop
     idx_AEE = 0
+    idx_gt = 0  # index of the ground-truth map of the current sequence (for the stride)
     val_results = {}
     end_test = False
     activity_log = None
@@ -123,6 +143,7 @@ def test(args, config_parser):
                     data.new_seq = False
                     activity_log = None
                     model.reset_states()
+                    idx_gt = 0
 
                 # finish inference loop
                 if data.seq_num >= len(data.files):
@@ -130,9 +151,42 @@ def test(args, config_parser):
                     break
 
                 # forward pass
-                x = model(
-                    inputs["event_voxel"].to(device), inputs["event_cnt"].to(device), log=config["vis"]["activity"]
-                )
+                if needs_events:
+                    # the optimization is only run for windows that are scored; the events of the other
+                    # windows are still added to the buffer of the estimator. With AEE, a window is
+                    # scored when enough events were collected since the last score (window_eval),
+                    # the required number of (fractional) windows has passed, and the stride allows it:
+                    # the same conditions as in the validation block below.
+                    will_score = True
+                    if "AEE" in config["metrics"]["name"]:
+                        collected = criteria[config["metrics"]["name"].index("AEE")].num_events
+                        will_score = (
+                            collected + inputs["event_list"].shape[1] >= config["data"]["window_eval"]
+                            and bool(inputs["dt_gt"] > 0.0)
+                            and (idx_AEE + 1 == np.round(1.0 / config["data"]["window"]))
+                            and idx_gt % stride == 0
+                        )
+                    done = model.windows
+                    x = model(
+                        inputs["event_voxel"].to(device),
+                        inputs["event_cnt"].to(device),
+                        events=inputs,
+                        optimize=will_score,
+                    )
+                    if model.windows != done and (model.windows % 20 == 0 or model.windows == 1):
+                        elapsed = time.time() - t_start
+                        print(
+                            "Optimized {} windows | {:.0f} s | {:.2f} s per window".format(
+                                model.windows, elapsed, elapsed / model.windows
+                            ),
+                            flush=True,
+                        )
+                else:
+                    x = model(
+                        inputs["event_voxel"].to(device),
+                        inputs["event_cnt"].to(device),
+                        log=config["vis"]["activity"],
+                    )
 
                 # mask flow for visualization
                 flow_vis = x["flow"][-1].clone()
@@ -171,6 +225,12 @@ def test(args, config_parser):
                             if metric == "AEE":
                                 idx_AEE += 1
                                 if idx_AEE != np.round(1.0 / config["data"]["window"]):
+                                    continue
+                                idx_gt += 1
+                                if (idx_gt - 1) % stride != 0:
+                                    # ground-truth map skipped by the stride
+                                    idx_AEE = 0
+                                    criteria[i].reset()
                                     continue
 
                             # compute metric

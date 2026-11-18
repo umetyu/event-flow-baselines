@@ -21,5 +21,9 @@ export EVFLOW_DATA="${EVFLOW_DATA:-$PWD/datasets/data}"
 export AFFINE_DATA="${AFFINE_DATA:-$HOME/projects/event_segmentation/dataset}"
 
 export EVFLOW_MLRUNS="${EVFLOW_MLRUNS:-$PWD/mlruns}"
+
+# public code of Shiba et al. (GPL-3.0, not part of this repository): see cluster/setup_shiba.sh
+export EVFLOW_SHIBA_REPO="${EVFLOW_SHIBA_REPO:-$PWD/third_party/event_based_optical_flow}"
+export EVFLOW_SHIBA_SCRATCH="${EVFLOW_SHIBA_SCRATCH:-${TMPDIR:-/tmp}}"
 export MLFLOW_ALLOW_FILE_STORE=true
 export PYTHONUNBUFFERED=1

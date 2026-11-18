@@ -13,6 +13,7 @@
 | 0 | コードが今の環境(PyTorch 2系)で動くか | Izar(PyTorch 2.5.1 + CUDA)で学習・保存・評価が通ることを確認 |
 | 1 | 再帰の6モデル: 配布済みの重みを評価して論文Table 1と比較(再学習しない) | **実行済み(2026-11-18)。5モデルは論文と一致、RNN-EV-FlowNetだけ不一致。** [結果](docs/results_pretrained_2026-11-18.md) |
 | 2 | [56]型の1モデル: UZH-FPVで学習して評価 | **学習中**(2026-11-18投入、1エポック約145秒) |
+| 3 | 学習しない最適化手法(簡易版2種、Shibaらの公開コード)を同じ採点で評価 | 実装済み、合成データで確認。**実データでは未実行** |
 | 追加 | 記憶なしの4条件、追加シード、入力窓の長さ、AffineObjects(論文にない。再現の後) | configのみ。**未実行** |
 
 数値があるのは段階1だけです。それ以外はまだ結果がありません。
@@ -145,6 +146,54 @@ bash cluster/submit_train.sh configs/exp/s2_{gru,rnn,leaky}-evflownet-cnt_w1000_
 |---|---|---|
 | ECD、HQF(GTなしの評価。任意) | `$EVFLOW_DATA` の下に `ECD/` `HQF/` | [docs/README_event_flow.md](docs/README_event_flow.md) の "Download datasets" |
 | AffineObjects(追加の実験用) | `$AFFINE_DATA`(既定 `$HOME/projects/event_segmentation/dataset`)の下に `train/h5/` `test/recordings_h5/` | 既にIzarにあるものを使用 |
+
+## 学習しない最適化手法(contrast maximization)
+
+Gallego et al.(CVPR 2018)の考え方で、窓ごとに「イベント画像が最も鮮明になるフロー」を最適化で求める方法です。ネットワークと同じデータ・同じ採点(AEE)にそのまま載るようにしてあります。重みはなく、設定だけを1つの実行として登録します。
+
+| 名前 | 中身 | 出どころ |
+|---|---|---|
+| `cmax-timestamp` | 多段の格子(1×1〜16×16)のフローをAdamで最適化。目的関数は**ネットワークの学習損失と同じもの** | このリポジトリの簡易実装(`models/optimization.py`) |
+| `cmax-variance` | 同じ格子で、目的関数を論文どおり**イベント画像の分散**にしたもの | 同上 |
+| `shiba` | Shiba et al.(ECCV 2022)の公開コードのソルバをそのまま呼ぶ。設定は公開されているMVSEC用(time-awareなし) | [tub-rip/event_based_optical_flow](https://github.com/tub-rip/event_based_optical_flow)(GPL-3.0) |
+
+**過去の持ち方**: 直近30,000イベントをバッファに保持し、そこから速度場(px/s)を求めて、採点する窓の変位に換算します。過去は入力表現でもネットワークの状態でもなく、バッファにあります。
+
+### 実行
+
+```bash
+bash cluster/setup_shiba.sh        # shiba を使う場合のみ。公開コードを取得して依存を追加
+```
+
+まず大きなストライドで1窓あたりの時間を測ります(STRIDE=50 なら dt=1 で約170窓)。
+
+```bash
+for preset in cmax-timestamp cmax-variance shiba; do sbatch --job-name=opt-$preset --export=ALL,PRESET=$preset,SUITES="mvsec_dt1",STRIDE=50 cluster/optim.sbatch; done
+sbatch --job-name=eval-stride50 --export=ALL,SUITES="mvsec_dt1",MODELS=core,STRIDE=50 cluster/eval.sbatch   # 同じ窓でネットワークも採点
+```
+
+ログに `Optimized N windows | ... s per window` が出ます。全部の窓を評価する場合は `STRIDE` を外します(dt=1で8,633窓、dt=4で2,156窓)。
+
+- `STRIDE=n` は「n枚に1枚のGTだけ採点する」指定です。結果は `MVSEC_dt1_stride50` のように別の列になり、全窓の評価とは混ざりません。論文値との比較表にも入りません。
+- 結果は1つの評価が最後まで終わった時点で書き出されます。制限時間で止まると、その評価は失われます。
+- 系列の冒頭はバッファが埋まっておらず、推定が悪くなります。バッファが一度埋まるまでは、毎回ゼロから多めの反復で最適化します。
+- GPUで同じシードでも結果が完全には一致しない点は、ネットワークと同じです。
+
+### 公開コード(shiba)との違い
+
+論文の値と一致するとは限りません。違いは次のとおりです。
+
+- **データ**: 公開コードは生のMVSEC(346×260)を読みます。ここでは配布形式(256×256に切り出し済み)を使い、タイルの切り出しもそれに合わせています。
+- **最適化に使うイベント**: 公開スクリプトは採点区間の前後から常に30,000イベントを取ります。ここでは過去方向の直近30,000イベントだけを使います(未来は見ません)。
+- **採点**: このリポジトリのAEE(イベントがあり、GTが有効な画素)で行います。
+- **屋外**: 公開されている設定は `indoor_flying1` 用だけです。`outdoor_day1` にも同じ設定を使います。
+- 公開コードはGPL-3.0なので、このリポジトリには含めず、実行時に固定のコミットを取得します(`third_party/`、git管理外)。
+
+### 確認できていること
+
+- 合成データ(一定速度で動く点群、正解は既知)で、3つとも正解の速度を復元しました(誤差は速度の2〜4%)。
+- スモークテストに「`cmax-timestamp` がゼロフローの半分以下の誤差で既知のフローを復元する」確認を入れてあります。
+- **実データ(MVSEC)とIzarのGPUでは未実行です。** 1窓あたりの時間も未計測で、CPUでは `shiba` が1窓あたり約3分、簡易版が20〜100秒でした。
 
 ## 追加の実験(論文にない。再現の後)
 

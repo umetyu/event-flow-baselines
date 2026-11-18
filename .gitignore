@@ -11,3 +11,4 @@ results/
 results_inference/
 .DS_Store
 cluster/local.env
+third_party/

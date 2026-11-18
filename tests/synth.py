@@ -52,7 +52,9 @@ def make_sequence(path, resolution=(64, 64), num_events=12000, duration=1.0, vel
 
         frame_ts = t0 + np.arange(0.0, duration, 1.0 / rate)
         for name, step in [("flow_dt1", 1), ("flow_dt4", 4)]:
-            for i, t in enumerate(frame_ts):
+            # one map per frame for dt=1 and one every four frames for dt=4, as in the MVSEC files:
+            # consecutive maps of a group are `step` frames apart
+            for i, t in enumerate(frame_ts[::step]):
                 flow = np.zeros((2, height, width), dtype=np.float32)
                 flow[0] = velocity[0] * step / rate
                 flow[1] = velocity[1] * step / rate

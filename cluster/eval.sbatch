@@ -15,11 +15,13 @@
 # RUNS: run ids, run names or experiment names (wildcards allowed); empty = every run in mlruns/.
 # MODELS: model classes to keep, or "core" for the six models of the study; empty = all.
 # Add REFERENCE=1 to compare the MVSEC AEE with Table 1 of the paper.
+# STRIDE=n scores only every n-th ground-truth map (to compare with strided optimizer runs).
 set -eo pipefail
 cd "${SLURM_SUBMIT_DIR:?}"
 source cluster/env.sh
 set -u
 : "${SUITES:?Set SUITES, e.g. SUITES=\"mvsec_dt1 mvsec_dt4\"}"
+export EVFLOW_EVAL_STRIDE="${STRIDE:-1}"
 nvidia-smi
 status=0
 # shellcheck disable=SC2086
