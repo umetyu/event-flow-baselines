@@ -21,7 +21,15 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from experiments.common import ROOT, data_field, list_runs, model_field, read_metric, select_runs  # noqa: E402
+from experiments.common import (  # noqa: E402
+    ROOT,
+    data_field,
+    list_runs,
+    model_field,
+    read_metric,
+    reference_key,
+    select_runs,
+)
 
 
 def suite_name(config):
@@ -81,7 +89,7 @@ def main():
         raise SystemExit("No runs match {} (models: {}) in {}".format(args.runs, args.models or "all", args.path_mlflow))
     os.makedirs(args.out, exist_ok=True)
 
-    table, groups, info = [], {}, {}
+    table, groups, info, encodings = [], {}, {}, {}
     for run in runs:
         label = run["name"] or run["run_id"]
         group = re.sub(r"_seed\d+$", "", label)
@@ -94,6 +102,7 @@ def main():
             "n_params": run["params"].get("n_params", ""),
         }
         base = [run["experiment"], label, run["run_id"], info[group]["model"], info[group]["input"], info[group]["window"]]
+        encodings[label] = model_field(run, "encoding", "")
         if loss:
             table.append(base + ["train", "epochs", "-", len(loss)])
             table.append(base + ["train", "best_loss", "-", min(v for _, v in loss)])
@@ -129,19 +138,31 @@ def main():
             reference = yaml.safe_load(fid)
         lines += ["", "## MVSEC AEE vs. Table 1 of Hagenaars et al. 2021", "",
                   "| run | model (paper row) | dt | sequence | ours | paper | diff |", "|---|---|---|---|---|---|---|"]
-        worst = 0.0
+        worst, literature = 0.0, False
         for row in table:
             _, label, _, model, _, _, suite, metric, seq, value = row
-            if metric != "AEE" or model not in reference["models"] or not suite.startswith("MVSEC_dt"):
+            key = reference_key(model, encodings.get(label, ""))
+            if metric != "AEE" or not suite.startswith("MVSEC_dt"):
+                continue
+            if key in reference["models"]:
+                entry, own = reference["models"][key], True
+            elif key in reference["literature"]:
+                entry, own = reference["literature"][key], False
+            else:
                 continue
             dt = suite[-3:]
             for i, name in enumerate(reference["sequences"]):
                 if name in seq:
-                    paper = reference["models"][model][dt][i]
-                    worst = max(worst, abs(value - paper))
+                    paper = entry[dt][i]
+                    if own:
+                        worst = max(worst, abs(value - paper))
+                    literature = literature or not own
                     lines.append("| {} | {} ({}) | {} | {} | {:.3f} | {:.2f} | {:+.3f} |".format(
-                        label, model, reference["models"][model]["paper"], dt, name, value, paper, value - paper))
-        lines += ["", "Largest absolute difference: {:.3f} px (the paper reports two decimals).".format(worst)]
+                        label, model, entry["paper"], dt, name, value, paper, value - paper))
+        lines += ["", "Largest absolute difference to the paper's own models: {:.3f} px (the paper reports two decimals).".format(worst)]
+        if literature:
+            lines += ["Rows marked `*` are literature values of networks trained on MVSEC; they are shown for "
+                      "orientation and are not expected to match a network trained here."]
 
     with open(os.path.join(args.out, "summary.md"), "w") as fid:
         fid.write("\n".join(lines) + "\n")

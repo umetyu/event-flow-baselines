@@ -30,6 +30,7 @@ from tests.synth import make_sequence  # noqa: E402
 DEFAULT_MODELS = [
     "EVFlowNet:cnt:2",
     "EVFlowNet:voxel:5",
+    "EVFlowNet:voxel:9",
     "RecEVFlowNet:cnt:2",
     "RNNRecEVFlowNet:cnt:2",
     "LeakyRecEVFlowNet:cnt:2",

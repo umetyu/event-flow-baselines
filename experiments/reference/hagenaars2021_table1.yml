@@ -21,3 +21,10 @@ models:
   ALIFFireNet:         {paper: ALIF-FireNet,     dt1: [0.62, 1.04, 1.85, 1.58], dt4: [2.36, 3.94, 6.65, 5.60]}
   PLIFFireNet:         {paper: PLIF-FireNet,     dt1: [0.56, 0.90, 1.67, 1.41], dt4: [2.11, 3.44, 5.94, 4.98]}
   XLIFFireNet:         {paper: XLIF-FireNet,     dt1: [0.54, 0.98, 1.82, 1.54], dt4: [2.07, 3.73, 6.51, 5.43]}
+
+# Starred rows of Table 1: non-recurrent networks from the literature whose input encodes
+# spatiotemporal information. According to the paper they were trained on MVSEC sequences, not on
+# UZH-FPV, so a network trained in this repository is NOT expected to match them.
+literature:
+  EVFlowNet_voxel: {paper: "EV-FlowNet* [56] (Zhu et al., CVPR 2019)", dt1: [0.32, 0.58, 1.02, 0.87], dt4: [1.30, 2.18, 3.85, 3.18]}
+  EVFlowNet_2018:  {paper: "EV-FlowNet* [54] (Zhu et al., RSS 2018)",  dt1: [0.49, 1.03, 1.72, 1.53], dt4: [1.23, 2.25, 4.05, 3.45]}

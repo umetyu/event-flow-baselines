@@ -12,7 +12,28 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Models of Hagenaars et al. 2021 that differ only in how the network keeps the past (class names in
 # models/model.py): gated recurrence (the paper's "EV-FlowNet"/"FireNet"), vanilla recurrence and
 # leaky neurons, for both architectures. The spiking models of the paper are left out.
-CORE_MODELS = ["RecEVFlowNet", "RNNRecEVFlowNet", "LeakyRecEVFlowNet", "FireNet", "RNNFireNet", "LeakyFireNet"]
+# In addition, the non-recurrent EV-FlowNet with a voxel-grid input: the kind of network behind the
+# literature row "EV-FlowNet [56]" of Table 1 (Zhu et al., CVPR 2019), where the past is encoded in
+# the input instead of the network state. Value = required input encoding (None = any).
+CORE_MODELS = {
+    "RecEVFlowNet": None,
+    "RNNRecEVFlowNet": None,
+    "LeakyRecEVFlowNet": None,
+    "FireNet": None,
+    "RNNFireNet": None,
+    "LeakyFireNet": None,
+    "EVFlowNet": "voxel",
+}
+
+
+def reference_key(model, encoding):
+    """
+    Key of a run in experiments/reference/hagenaars2021_table1.yml.
+    """
+
+    if model == "EVFlowNet":
+        return "EVFlowNet_voxel" if str(encoding).startswith("voxel") else None
+    return model
 
 
 def _read(path):
@@ -82,10 +103,15 @@ def select_runs(runs, patterns, models=None):
     import fnmatch
 
     if models and "all" not in models:
-        wanted = set()
+        wanted = {}
         for model in models:
-            wanted.update(CORE_MODELS if model == "core" else [model])
-        runs = [run for run in runs if model_field(run, "name") in wanted]
+            wanted.update(CORE_MODELS if model == "core" else {model: None})
+        runs = [
+            run
+            for run in runs
+            if model_field(run, "name") in wanted
+            and wanted[model_field(run, "name")] in [None, model_field(run, "encoding")]
+        ]
     if not patterns:
         return runs
     return [

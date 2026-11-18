@@ -13,7 +13,9 @@ Step 2 (input representation x memory), training setup identical to Hagenaars et
     leaky / RNN / GRU, count input  -> past kept in the network state. These six are models of the
                                        paper (Table 1); its spiking variants are not retrained here.
     no memory, count input          -> NOT in the paper: lower bound, no motion information in the input
-    no memory, voxel input          -> NOT in the paper: past encoded in the input by hand
+    no memory, voxel input          -> past encoded in the input by hand. evflownet-voxel9 is the
+                                       counterpart of the literature row "EV-FlowNet [56]" of Table 1;
+                                       evflownet-voxel5 / fireflownet-voxel5 are NOT in the paper
 The paper reports one result per model and no seeds; the three seeds are an addition.
 Step 3 (how much past in the input): the same networks with longer input windows. NOT in the paper.
 Step 4 (AffineObjects): initial configs on the simulated dataset of EV-LayerSegNet. NOT yet run.
@@ -65,6 +67,7 @@ MODELS = {
     # EV-FlowNet family (encoder-decoder)
     "evflownet-cnt": ("EVFlowNet", "cnt", 2, 2e-4, "none"),
     "evflownet-voxel5": ("EVFlowNet", "voxel", 5, 2e-4, "none"),
+    "evflownet-voxel9": ("EVFlowNet", "voxel", 9, 2e-4, "none"),  # input of Zhu et al. 2019, see ZHU2019
     "leaky-evflownet-cnt": ("LeakyRecEVFlowNet", "cnt", 2, 2e-4, "leaky"),
     "rnn-evflownet-cnt": ("RNNRecEVFlowNet", "cnt", 2, 5e-5, "rnn"),  # lr from the upstream config comment
     "gru-evflownet-cnt": ("RecEVFlowNet", "cnt", 2, 2e-4, "gru"),
@@ -77,6 +80,12 @@ MODELS = {
 }
 
 STEP2_SEEDS = [0, 1, 2]
+
+# Counterpart of the literature row "EV-FlowNet [56]" (Zhu et al., CVPR 2019): non-recurrent network,
+# voxel grid with B=9 bins, one forward pass per loss. Zhu et al. use N=30000 events on 256x256; the
+# same number of events per pixel on the 128x128 training crops is 7500. Everything else (training
+# data, loss, optimizer) is the pipeline of this repository, NOT the one of Zhu et al.
+ZHU2019 = ("evflownet-voxel9", 7500)
 STEP3_MODELS = ["evflownet-cnt", "evflownet-voxel5", "gru-evflownet-cnt"]
 STEP3_WINDOWS = [2500, 5000, 10000]  # divisors of the 10k-event loss window; 1000 is covered by step 2
 
@@ -117,8 +126,15 @@ def build():
     train, evals = {}, {}
 
     for tag in MODELS:
+        if tag == ZHU2019[0]:
+            continue
         for seed in STEP2_SEEDS:
             train["s2_{}_w1000_seed{}".format(tag, seed)] = train_config(tag, 1000, seed, "step2")
+
+    tag, window = ZHU2019
+    config = train_config(tag, window, 0, "step2")
+    config["data"]["window_loss"] = window
+    train["s2_{}_w{}_seed0".format(tag, window)] = config
 
     for tag in STEP3_MODELS:
         for window in STEP3_WINDOWS:

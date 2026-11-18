@@ -11,15 +11,17 @@
 | 段階 | 内容 | 状態 |
 |---|---|---|
 | 0 | コードが今の環境(PyTorch 2系)で動くか | 合成データのスモークテストは通過(CPU)。**Izar上では未実行** |
-| 1 | 対象6モデルの配布済み重みで論文Table 1を再現 | スクリプト準備済み。**データ未取得・未実行** |
-| 2 | 対象6モデルを再学習して再現 | config 6本を生成済み。**未実行** |
+| 1 | 対象モデルの配布済み重みで論文Table 1を再現 | スクリプト準備済み。**データ未取得・未実行** |
+| 2 | 対象7モデルを学習して比較 | config 7本を生成済み。**未実行** |
 | 追加 | 記憶なしの4条件、追加シード、入力窓の長さ、AffineObjects(論文にない。再現の後) | configのみ。**未実行** |
 
 実データでの学習・評価は一切行っていません。数値はまだ1つもありません。
 
-## 再現の対象(6モデル)
+## 対象(7モデル)
 
-論文の14モデルのうち、**過去の持たせ方だけが違うANNの6モデル**に絞っています。Hebbian機構と直接比べる相手になるものです。
+論文のTable 1から、**過去の持たせ方が違うANN**に絞っています。Hebbian機構と直接比べる相手になるものです。
+
+**過去をネットワークの状態に持つ6モデル**(論文の著者が学習したもの。入力は時間情報のないカウント):
 
 | 記憶の持ち方 | EV-FlowNet系 | FireNet系(軽量) | コード上のクラス |
 |---|---|---|---|
@@ -27,8 +29,19 @@
 | 素のRNN | RNN-EV-FlowNet | RNN-FireNet | `RNNRecEVFlowNet` / `RNNFireNet` |
 | リーク(状態を持つニューロン) | Leaky-EV-FlowNet | Leaky-FireNet | `LeakyRecEVFlowNet` / `LeakyFireNet` |
 
+**過去を入力に持つ1モデル**(論文では文献値として載っている行):
+
+| 論文の行 | 中身 | ここでの設定 |
+|---|---|---|
+| EV-FlowNet\* [56](Zhu et al., CVPR 2019) | 再帰のないEV-FlowNet。入力は時間方向9ビンのvoxel | `evflownet-voxel9`(クラス `EVFlowNet`) |
+
+- 番号なしの「EV-FlowNet」は著者がConvGRUを足した再帰版で、[56]とは別物です。両方を対象に入れています。
+- **[56]の行は再現ではなく「同じ土俵での対応物」です。** 論文によれば\*付きの文献モデルはMVSECの系列で学習されており、ここではUZH-FPVとこのリポジトリの損失で学習します。数値が[56]の値に一致することは期待できません。
+- [56]に合わせたのは入力だけです: 9ビン、順伝播1回で損失1回、1画素あたりのイベント数(原論文は256×256で30,000イベント → 128×128では7,500)。
+- [56]そのものの再現(MVSECの `outdoor_day2` で学習、イベント数固定での評価)は用意していません。`outdoor_day2` が配布データにあるかも未確認です。
+- [54](Zhu et al., RSS 2018)は学習に輝度画像を使う別の方式なので対象外です。参照値だけ記録してあります。
 - SNNの8モデル(LIF、ALIF、PLIF、XLIF)は対象外です。配布済みの重みは手元に来るので、評価だけなら `MODELS` にクラス名を足せば加えられます。再学習の設定は用意していません。
-- さらに減らすなら、EV-FlowNet系の3つだけでも記憶の比較は成立します。
+- さらに減らすなら、EV-FlowNet系の3つと `evflownet-voxel9` の4つでも比較は成立します。
 
 ## 論文(Hagenaars et al. 2021)との対応
 
@@ -81,26 +94,28 @@ sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",MODELS=core,REFERENCE=1 cluster
 cat results/summary.md
 ```
 
-`mlruns/` にある配布済みの重みのうち対象の6モデルをMVSECで評価し、[experiments/reference/hagenaars2021_table1.yml](experiments/reference/hagenaars2021_table1.yml) の論文値との差を表にします。論文は小数2桁なので、差が0.01 px程度に収まれば再現できています。ここが合わないうちは先へ進まないでください。
+`mlruns/` にある配布済みの重みのうち対象のモデルをMVSECで評価し(著者が学習した6モデル。[56]型の重みが配布物にあるかは未確認で、無ければ6モデルだけになります)、[experiments/reference/hagenaars2021_table1.yml](experiments/reference/hagenaars2021_table1.yml) の論文値との差を表にします。論文は小数2桁なので、差が0.01 px程度に収まれば再現できています。ここが合わないうちは先へ進まないでください。
 
 - 参照値はPDFから機械的に書き起こしたものです。引用する前に論文と照合してください。
 - 配布モデルは古いMLflow・PyTorchで保存されています。メタデータが読めない場合でも重みを探して読むようにし、**重みが見つからないときは評価を中止します**(元コードは黙って未学習の重みで評価を続けます)。この経路は合成データで模擬して確認しましたが、実物では未確認です。
 
-### 2. 再学習して再現(6モデル)
+### 2. 学習して比較(7モデル)
 
 ```bash
 # まず1本だけ流して1エポックの時間を確認
 bash cluster/submit_train.sh configs/exp/s2_gru-evflownet-cnt_w1000_seed0.yml
-# 残りの5本
+# 残りの6本
 bash cluster/submit_train.sh configs/exp/s2_{rnn,leaky}-evflownet-cnt_w1000_seed0.yml \
-                             configs/exp/s2_{gru,rnn,leaky}-firenet-cnt_w1000_seed0.yml
+                             configs/exp/s2_{gru,rnn,leaky}-firenet-cnt_w1000_seed0.yml \
+                             configs/exp/s2_evflownet-voxel9_w7500_seed0.yml
 # 学習後、Table 1と比較
 sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step2",MODELS=core,REFERENCE=1 cluster/eval.sbatch
 ```
 
 - 条件は論文と同じです(UZH-FPVの学習データ全部、1,000イベントごとに順伝播、10,000イベントごとに損失、128×128、バッチ8、100エポック、Adam 2e-4)。`rnn-evflownet` だけ元コードのコメントに従い学習率5e-5です。
 - 1エポックの所要時間は未計測です。最初のジョブのログ(`Epoch 0000 done | ... s`)の秒数×100が1モデルの所要時間です。3日の制限に収まらないようなら相談してください。**途中から再開する機能はありません**(`--prev_runid` で重みを引き継いだ新規学習は可能)。
-- 見積もり(未実測): 1モデル約10時間(6〜20時間)、6モデルで約2 GPU日。FireNet系はもっと短いはずです。
+- 見積もり(未実測): 再帰の6モデルは1つ約10時間(6〜20時間)で合計約2 GPU日。FireNet系はもっと短いはずです。`evflownet-voxel9` は1エポックの順伝播が約1,170回(再帰モデルは8,750回)なので、ずっと短く済むはずです。
+- 比較表では[56]の行に `*` が付き、文献値として表示されます。一致の判定には含めません。
 - 再学習の結果は論文値と小数2桁まで一致するとは限りません。論文は1回の学習結果だけを報告しており、初期値やシードが分からないためです。
 
 ## 追加の実験(論文にない。再現の後)
@@ -114,7 +129,7 @@ bash cluster/submit_train.sh configs/exp/s2_{evflownet,fireflownet}-{cnt,voxel5}
 | 入力 | EV-FlowNet系 | FireNet系 | 役割 |
 |---|---|---|---|
 | カウント | `evflownet-cnt` | `fireflownet-cnt` | 下限(入力にも状態にも過去がない) |
-| voxel 5ビン | `evflownet-voxel5` | `fireflownet-voxel5` | 過去を手設計で入力に入れる |
+| voxel 5ビン | `evflownet-voxel5` | `fireflownet-voxel5` | 過去を手設計で入力に入れる(1,000イベント窓。`evflownet-voxel9` との違いは窓の長さとビン数) |
 
 残りのシードは `configs/exp/s2_*_seed1.yml` と `seed2` です。
 
