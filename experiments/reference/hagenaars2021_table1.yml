@@ -1,0 +1,23 @@
+# Average endpoint error (AEE, px) on MVSEC from Table 1 of Hagenaars, Paredes-Valles and de Croon,
+# "Self-Supervised Learning of Event-Based Optical Flow with Spiking Neural Networks", NeurIPS 2021.
+# https://proceedings.neurips.cc/paper_files/paper/2021/file/39d4b545fb02556829aab1db805021c3-Paper.pdf
+#
+# Transcribed with an automatic PDF reader (2026-11-18). CHECK AGAINST THE PAPER BEFORE QUOTING.
+# Keys are the class names in models/model.py; "paper" is the row label in the table.
+# Order of values: outdoor_day1, indoor_flying1, indoor_flying2, indoor_flying3.
+sequences: [outdoor_day1, indoor_flying1, indoor_flying2, indoor_flying3]
+models:
+  RecEVFlowNet:        {paper: EV-FlowNet,       dt1: [0.47, 0.60, 1.17, 0.93], dt4: [1.69, 2.16, 3.90, 3.00]}
+  RNNRecEVFlowNet:     {paper: RNN-EV-FlowNet,   dt1: [0.56, 0.62, 1.20, 0.93], dt4: [1.91, 2.23, 4.01, 3.07]}
+  LeakyRecEVFlowNet:   {paper: Leaky-EV-FlowNet, dt1: [0.53, 0.71, 1.43, 1.14], dt4: [1.99, 2.59, 4.94, 3.84]}
+  SpikingRecEVFlowNet: {paper: LIF-EV-FlowNet,   dt1: [0.53, 0.71, 1.44, 1.16], dt4: [2.02, 2.63, 4.93, 3.88]}
+  ALIFRecEVFlowNet:    {paper: ALIF-EV-FlowNet,  dt1: [0.57, 1.00, 1.78, 1.55], dt4: [2.13, 3.81, 6.40, 5.53]}
+  PLIFRecEVFlowNet:    {paper: PLIF-EV-FlowNet,  dt1: [0.60, 0.75, 1.52, 1.23], dt4: [2.24, 2.80, 5.21, 4.12]}
+  XLIFRecEVFlowNet:    {paper: XLIF-EV-FlowNet,  dt1: [0.45, 0.73, 1.45, 1.17], dt4: [1.67, 2.72, 4.93, 3.91]}
+  FireNet:             {paper: FireNet,          dt1: [0.55, 0.89, 1.62, 1.35], dt4: [2.04, 3.35, 5.71, 4.68]}
+  RNNFireNet:          {paper: RNN-FireNet,      dt1: [0.62, 0.96, 1.77, 1.48], dt4: [2.35, 3.64, 6.33, 5.20]}
+  LeakyFireNet:        {paper: Leaky-FireNet,    dt1: [0.52, 0.90, 1.67, 1.43], dt4: [1.96, 3.42, 5.92, 4.98]}
+  LIFFireNet:          {paper: LIF-FireNet,      dt1: [0.57, 0.98, 1.77, 1.50], dt4: [2.12, 3.72, 6.27, 5.23]}
+  ALIFFireNet:         {paper: ALIF-FireNet,     dt1: [0.62, 1.04, 1.85, 1.58], dt4: [2.36, 3.94, 6.65, 5.60]}
+  PLIFFireNet:         {paper: PLIF-FireNet,     dt1: [0.56, 0.90, 1.67, 1.41], dt4: [2.11, 3.44, 5.94, 4.98]}
+  XLIFFireNet:         {paper: XLIF-FireNet,     dt1: [0.54, 0.98, 1.82, 1.54], dt4: [2.07, 3.73, 6.51, 5.43]}
