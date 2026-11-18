@@ -30,7 +30,7 @@ OUT = os.path.join(ROOT, "configs", "exp")
 # events (10 forward passes per backward pass), 128x128 crops, batch 8, 100 epochs, Adam 2e-4.
 BASE = {
     "experiment": "Default",
-    "data": {"path": "${EVFLOW_DATA}/splits/train/", "mode": "events", "window": 1000, "window_loss": 10000},
+    "data": {"path": "${EVFLOW_DATA}/training/", "mode": "events", "window": 1000, "window_loss": 10000},
     "model": {
         "name": "FireNet",
         "encoding": "cnt",
@@ -77,7 +77,6 @@ MODELS = {
 STEP2_SEEDS = [0, 1, 2]
 STEP3_MODELS = ["evflownet-cnt", "evflownet-voxel5", "gru-evflownet-cnt"]
 STEP3_WINDOWS = [2500, 5000, 10000]  # divisors of the 10k-event loss window; 1000 is covered by step 2
-EVAL_WINDOWS = [1000] + STEP3_WINDOWS
 
 # AffineObjects is 640x480, i.e. ~19x more pixels than the 128x128 crops above. The windows are
 # scaled accordingly, and the loss window equals the 200k events used to train EV-LayerSegNet.
@@ -131,21 +130,19 @@ def build():
         config["loader"]["batch_size"] = batch_size
         train["s4_affine_{}_w{}_seed0".format(tag, window)] = config
 
-    # MVSEC with ground truth, as in the paper (configs/eval_MVSEC.yml without the display)
-    evals["eval_mvsec_dt1"] = eval_config("${EVFLOW_DATA}/MVSEC/", "gtflow_dt1", 1, 15000, ["AEE"], [256, 256], 128)
-    evals["eval_mvsec_dt4"] = eval_config("${EVFLOW_DATA}/MVSEC/", "gtflow_dt4", 0.25, 15000, ["AEE"], [256, 256], 128)
+    # MVSEC with ground truth, as in the paper (configs/eval_MVSEC.yml without the display).
+    # mvsec_test: the four sequences of Table 1 (final numbers only).
+    # mvsec_val:  the other sequences with ground truth (model selection and tuning).
+    # Both folders are created by experiments/split_mvsec.py.
+    for split, tag in [("mvsec_test", "mvsec"), ("mvsec_val", "mvsec_val")]:
+        path = "${EVFLOW_DATA}/splits/" + split + "/"
+        evals["eval_{}_dt1".format(tag)] = eval_config(path, "gtflow_dt1", 1, 15000, ["AEE"], [256, 256], 128)
+        evals["eval_{}_dt4".format(tag)] = eval_config(path, "gtflow_dt4", 0.25, 15000, ["AEE"], [256, 256], 128)
 
     # datasets without ground truth, as in the paper (configs/eval_ECD.yml, configs/eval_HQF.yml)
     for name in ["ECD", "HQF"]:
         evals["eval_" + name.lower()] = eval_config(
             "${EVFLOW_DATA}/" + name + "/", "events", 15000, 15000, ["FWL", "RSAT"], [180, 240], 128
-        )
-
-    # held-out training sequences (model selection without touching MVSEC): same forward-pass window
-    # as in training, metrics over the same 10k events for every model
-    for window in EVAL_WINDOWS:
-        evals["eval_val_w{}".format(window)] = eval_config(
-            "${EVFLOW_DATA}/splits/val/", "events", window, 10000, ["FWL", "RSAT"], [128, 128], 128
         )
 
     # AffineObjects test set: metrics over the 50k events used to test EV-LayerSegNet

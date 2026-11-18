@@ -129,7 +129,7 @@ def main():
         worst = 0.0
         for row in table:
             _, label, _, model, _, _, suite, metric, seq, value = row
-            if metric != "AEE" or model not in reference["models"]:
+            if metric != "AEE" or model not in reference["models"] or not suite.startswith("mvsec_test"):
                 continue
             dt = suite[-3:]
             for i, name in enumerate(reference["sequences"]):

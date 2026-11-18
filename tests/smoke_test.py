@@ -259,11 +259,11 @@ def main():
             config = eval_config(data_dir, "gtflow_dt4")
             config["data"]["window"] = 0.25
             yaml.safe_dump(config, fid)
-        with open(os.path.join(config_dir, "eval_val_w500.yml"), "w") as fid:
-            yaml.safe_dump(eval_config(data_dir, "events"), fid)
+        with open(os.path.join(config_dir, "eval_mvsec_val_dt1.yml"), "w") as fid:
+            yaml.safe_dump(eval_config(data_dir, "gtflow_dt1"), fid)
         results2 = os.path.join(tmp, "results2") + "/"
         cmd = [
-            sys.executable, "experiments/evaluate.py", "--suites", "mvsec_dt4", "val", "--runs", args.models[0],
+            sys.executable, "experiments/evaluate.py", "--suites", "mvsec_dt4", "mvsec_val_dt1", "--runs", args.models[0],
             "--path_mlflow", path_mlflow, "--path_results", results2, "--config_dir", config_dir,
         ]
         first = run(cmd, ROOT)
@@ -277,12 +277,35 @@ def main():
         )
         with open(os.path.join(tmp, "tables", "runs.csv")) as fid:
             table = fid.read()
-        for needle in ["best_loss", "AEE", "FWL", "RSAT", "data_dt4"]:
+        for needle in ["best_loss", "AEE", "data_dt1", "data_dt4"]:
             assert needle in table, needle + " missing from runs.csv"
         print("OK   evaluate.py / collect.py produce the result tables")
     except Exception as e:
         failed.append("experiment-scripts check")
         print("FAIL experiment-scripts check {}: {}".format(type(e).__name__, e))
+
+    # ---- MVSEC test/validation split
+    try:
+        mvsec = os.path.join(tmp, "pack", "MVSEC")
+        os.makedirs(mvsec)
+        names = ["outdoor_day1", "indoor_flying1", "indoor_flying2", "indoor_flying3"]
+        for i, seq in enumerate(names + ["outdoor_day2"]):
+            make_sequence(os.path.join(mvsec, seq + "_data.h5"), num_events=2000, seed=i)
+        env = dict(os.environ, EVFLOW_DATA=os.path.join(tmp, "pack"))
+        subprocess.run([sys.executable, "experiments/split_mvsec.py"], cwd=ROOT, env=env, check=True,
+                       stdout=subprocess.DEVNULL)
+        test = sorted(os.listdir(os.path.join(tmp, "pack", "splits", "mvsec_test")))
+        val = sorted(os.listdir(os.path.join(tmp, "pack", "splits", "mvsec_val")))
+        assert test == sorted(n + "_data.h5" for n in names), test
+        assert val == ["outdoor_day2_data.h5"], val
+        os.remove(os.path.join(mvsec, "outdoor_day2_data.h5"))
+        only_test = subprocess.run([sys.executable, "experiments/split_mvsec.py", "--dry-run"], cwd=ROOT, env=env,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        assert only_test.returncode != 0, "an empty validation split must be an error"
+        print("OK   split_mvsec.py separates test and validation sequences")
+    except Exception as e:
+        failed.append("mvsec-split check")
+        print("FAIL mvsec-split check {}: {}".format(type(e).__name__, e))
 
     # evaluation must refuse to run without weights
     with open(os.path.join(tmp, "eval.yml"), "w") as fid:
