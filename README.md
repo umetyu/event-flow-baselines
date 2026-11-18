@@ -2,7 +2,7 @@
 
 イベントカメラの光フロー推定で、**「過去のイベントをどこに持たせるか(入力表現か、ネットワークの状態か)」**を比べるためのベースライン実験一式です。Hebbian機構を入れる前の参照表を作ることが目的です。
 
-- 土台: [tudelft/event_flow](https://github.com/tudelft/event_flow)(Hagenaars et al., NeurIPS 2021、MITライセンス)。履歴ごと取り込み、取り込み時点に `upstream-base` タグを打っています。`git diff upstream-base` でこのリポジトリでの変更が全部見えます。元のREADMEは [docs/README_event_flow.md](docs/README_event_flow.md) です。
+- 土台: [tudelft/event_flow](https://github.com/tudelft/event_flow)(Hagenaars et al., NeurIPS 2021、MITライセンス)。履歴ごと取り込み、取り込み時点を `upstream-base` ブランチとして残しています。`git diff origin/upstream-base` でこのリポジトリでの変更が全部見えます。元のREADMEは [docs/README_event_flow.md](docs/README_event_flow.md) です。
 - 損失: contrast maximization(Gallego et al., CVPR 2018)に基づく自己教師あり損失。元コードのまま変更していません。
 - 対象モデルは次の3つの出典に限定しています: Hagenaars 2021、Gallego 2018、EV-LayerSegNet([論文](https://arxiv.org/abs/2506.06596) / [コード](https://github.com/Fulmen67/event_segmentation))。
 
