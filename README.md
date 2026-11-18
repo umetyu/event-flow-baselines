@@ -12,11 +12,33 @@
 |---|---|---|
 | 0 | コードが今の環境(PyTorch 2系)で動くか | 合成データのスモークテストは通過(CPU)。**Izar上では未実行** |
 | 1 | 配布済み学習済みモデルで論文Table 1を再現 | スクリプト準備済み。**データ未取得・未実行** |
-| 2 | 入力表現 × 記憶の比較(UZH-FPVで学習、MVSECのGTで検証・テスト) | config 30本を生成済み。**未実行** |
+| 2 | 入力表現 × 記憶の比較(UZH-FPVで学習、MVSECで評価) | config 30本を生成済み。**未実行** |
 | 3 | 入力窓の長さを振る | config 9本を生成済み。**未実行** |
 | 4 | AffineObjectsで同じ比較 | 初期config 3本のみ。**未実行・メモリ使用量も未確認** |
 
 実データでの学習・評価は一切行っていません。数値はまだ1つもありません。
+
+## 論文(Hagenaars et al. 2021)との対応
+
+学習と評価の手順は論文に合わせています。
+
+| 項目 | 論文 | このリポジトリ |
+|---|---|---|
+| 学習データ | UZH-FPV(128×128の切り出し140本) | 同じ(配布データをそのまま使用) |
+| 検証セット | なし(記載なし) | なし |
+| 保存する重み | 記載なし。公開コードは学習損失が最良のエポックを保存 | 公開コードのまま |
+| 評価 | MVSECの4系列(`outdoor_day1`、`indoor_flying1`〜`3`)でAEEと外れ値率、dt=1とdt=4 | 同じ(`mvsec_dt1`、`mvsec_dt4`) |
+| GTなしの評価 | ECDとHQFでFWL、RSAT | 同じ(`ecd`、`hqf`) |
+| 学習回数 | モデルごとに1つの結果。シード数の記載なし | 段階2は3シード(追加) |
+
+論文にないもの(このリポジトリでの追加):
+
+- 段階2のうち記憶なしの4条件(`evflownet-cnt`、`evflownet-voxel5`、`fireflownet-cnt`、`fireflownet-voxel5`)
+- 段階3(入力窓の長さ)と段階4(AffineObjects)
+
+論文にあって再学習の設定を用意していないもの:
+
+- SNNの8モデル(LIF、ALIF、PLIF、XLIFのEV-FlowNet版とFireNet版)。段階1では配布済みの重みで評価されます。各モデルの正確な学習設定は配布モデルの記録に入っているはずなので、入手後にそこから生成するのが確実です。
 
 ## 実行手順(Izar)
 
@@ -44,23 +66,6 @@ cat logs/smoke-<JOB_ID>.out      # 最後が "All smoke tests passed." なら合
 - 配布元はOneDriveの共有リンクです。このリポジトリを準備した環境からは到達できず、**リンクが現在も有効かは未確認**です。ブラウザで落としてからIzarへ転送する必要があるかもしれません。
 - 展開に約115 GBの空きが必要です。ホームの容量上限に注意してください。置き場所を変える場合は `export EVFLOW_DATA=/path/to/data` としてからジョブを投入します。
 
-### MVSECをテスト用と検証用に分ける
-
-```bash
-source cluster/env.sh
-$BENCHMARK_PYTHON experiments/split_mvsec.py --dry-run    # 振り分けを目で確認
-$BENCHMARK_PYTHON experiments/split_mvsec.py
-```
-
-| 用途 | 系列 | 指標 |
-|---|---|---|
-| テスト(最終的な数値だけ) | 論文Table 1の4系列: `outdoor_day1`、`indoor_flying1`〜`3` | AEE、外れ値率 |
-| 検証(モデル選択・調整) | それ以外でGTフローを持つ系列(`outdoor_day2`、`indoor_flying4` など) | 同じ |
-
-- 学習はUZH-FPVだけなので、MVSECはどの系列も学習に使われません。検証とテストは系列単位で分かれます。
-- 検証にGTを使うのは、GT不要の指標(FWL/RSAT)が学習損失と同じコントラスト系で、フローが悪化していても良く見えることがあるためです。
-- **配布データに4系列しか入っていない場合、このスクリプトはエラーで止まります。** その場合は生のMVSECから残りの系列を同じ前処理で変換する必要があります(変換スクリプトは未作成。配布元の前処理の詳細も未確認です)。
-
 ### 1. 論文の再現(学習なし)
 
 ```bash
@@ -77,8 +82,7 @@ cat results/summary.md
 
 ```bash
 bash cluster/submit_train.sh configs/exp/s2_*_seed0.yml      # まず1シード(10ジョブ)
-sbatch --export=ALL,SUITES="mvsec_val_dt1 mvsec_val_dt4",RUNS="step2" cluster/eval.sbatch   # 検証
-sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step2" cluster/eval.sbatch           # テスト(最後に)
+sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step2",REFERENCE=1 cluster/eval.sbatch
 ```
 
 | 記憶 | 入力 | EV-FlowNet系 | FireNet系(軽量) |
@@ -97,7 +101,7 @@ sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step2" cluster/eval.sbatc
 
 ```bash
 bash cluster/submit_train.sh configs/exp/s3_*.yml
-sbatch --export=ALL,SUITES="mvsec_val_dt1 mvsec_val_dt4",RUNS="step3" cluster/eval.sbatch
+sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step3" cluster/eval.sbatch
 ```
 
 `evflownet-cnt`、`evflownet-voxel5`、`gru-evflownet-cnt` について、順伝播1回あたりのイベント数を2,500、5,000、10,000に増やします(1,000は段階2に含まれます)。損失の窓は10,000イベントで固定です。「どれだけ過去を入れると良いか」の曲線になり、後でHebbian機構が狙う対象です。
@@ -122,7 +126,6 @@ python experiments/collect.py --runs step2
 ```
 
 - AEE(px)とRSATは小さいほど良く、FWLは大きいほど良い(1より大きければ、フローで補正したほうがイベント画像が鮮明)。
-- 表の `mvsec_val_*` が検証、`mvsec_test_*` がテストです。設定の調整やモデル選択は検証の値で行い、テストの値は最後に一度見るだけにしてください。
 - 実験の一覧は `python experiments/matrix.py --list`。条件を変えるときは生成物ではなく `experiments/matrix.py` を編集して再生成します。
 
 ## 元のevent_flowからの変更点
@@ -131,15 +134,12 @@ python experiments/collect.py --runs step2
 
 - **チェックポイント**: `mlflow.pytorch.log_model` をやめ、同じ場所に `state_dict` を直接保存。MLflowやPyTorchの版に依存しません。元の形式(モジュールごとpickle)も読めます。
 - **評価の安全装置**: 重みが見つからなければエラーで止まります。
-- **乱数**: `loader.seed` で `random` と `numpy` も固定(元はPyTorchのみ。シャッフルと拡張は固定されていませんでした)。データ系列は名前順に並べてからシャッフルします。
+- **乱数**: `loader.seed` で `random` と `numpy` も固定(元はPyTorchのみ。シャッフルと拡張は固定されていませんでした)。データ系列は名前順に並べてからシャッフルします。MLflowが内部で乱数を消費するため、MLflowの初期化後にもう一度シードを設定しています。同じシードなら損失が一致することをスモークテストで確認しています(CPU上。GPUでのビット単位の一致は未確認)。
 - **パス**: `data.path` で環境変数が使えます。データが無い・足りないときは分かるエラーを出します。
 - **ログ**: エポックごとに損失と所要時間を1行出力。学習可能パラメータ数を記録。`--run_name` を追加。
 - **MLflow**: ローカルのファイル保存に固定(`mlflow<3`)。
 
 ## 注意点
 
-- 学習中に保存されるのは「学習損失が最も低かったエポック」の重みです(元コードの仕様)。検証AEEが最良のエポックを選ぶ仕組みはまだありません。
-- 検証系列は少数で、`outdoor_day2` は走行シーンです。検証の値が屋外に偏る点に注意してください。
 - 記憶なし・カウント入力のモデルは、1,000イベントの画像1枚からフローを当てることになり、ほぼ情報がありません。下限として置いています。
 - MVSECは系列が少なく差が小さく出ます。seed間のばらつきより小さい差は差として扱わないでください。
-- `split_mvsec.py` はファイル名に系列名が含まれることを前提にしています。配布データの命名規則を見ていないので、`--dry-run` の出力を確認してください。

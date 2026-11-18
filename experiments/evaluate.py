@@ -2,12 +2,11 @@
 Evaluates trained (or pretrained) runs on one or more evaluation suites by calling eval_flow.py.
 
     python experiments/evaluate.py --suites mvsec_dt1 mvsec_dt4 --runs 's2_*'
-    python experiments/evaluate.py --suites mvsec_val_dt1 --runs step2  # all runs of an experiment
+    python experiments/evaluate.py --suites ecd hqf --runs step2        # all runs of an experiment
     python experiments/evaluate.py --suites mvsec_dt1 --runs LIFFireNet  # run id or run name
 
-Suites: mvsec_dt1, mvsec_dt4 (AEE on the four test sequences of the paper),
-        mvsec_val_dt1, mvsec_val_dt4 (AEE on the other MVSEC sequences, for tuning),
-        ecd, hqf (FWL/RSAT, as in the paper), affine (FWL/RSAT on AffineObjects).
+Suites: mvsec_dt1, mvsec_dt4 (AEE, as in the paper), ecd, hqf (FWL/RSAT, as in the paper),
+        affine (FWL/RSAT on AffineObjects, not in the paper).
 Results land in results_inference/<run id>/ (metrics_<n>.yml + eval_<n>.yml) and are summarized by
 experiments/collect.py. A suite that was already evaluated for a run is skipped unless --force.
 """
@@ -24,14 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experiments.common import ROOT, data_field, list_runs, select_runs  # noqa: E402
 
-FIXED = {
-    "mvsec_dt1": "eval_mvsec_dt1",
-    "mvsec_dt4": "eval_mvsec_dt4",
-    "mvsec_val_dt1": "eval_mvsec_val_dt1",
-    "mvsec_val_dt4": "eval_mvsec_val_dt4",
-    "ecd": "eval_ecd",
-    "hqf": "eval_hqf",
-}
+FIXED = {"mvsec_dt1": "eval_mvsec_dt1", "mvsec_dt4": "eval_mvsec_dt4", "ecd": "eval_ecd", "hqf": "eval_hqf"}
 
 
 def suite_config(suite, run):

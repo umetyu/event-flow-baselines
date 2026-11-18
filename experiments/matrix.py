@@ -9,11 +9,13 @@ Edit this script (not the generated files) to change the study.
 
 Naming: <step>_<model>-<input>_w<events per forward pass>_seed<seed>.yml
 
-Step 2 (input representation x memory), everything else identical to Hagenaars et al. 2021:
-    no memory, count input          -> lower bound, the network sees no motion information
-    no memory, voxel input          -> past encoded in the input by hand (EV-LayerSegNet style)
-    leaky / RNN / GRU, count input  -> past kept in the network state
-Step 3 (how much past in the input): the same networks with longer input windows.
+Step 2 (input representation x memory), training setup identical to Hagenaars et al. 2021:
+    leaky / RNN / GRU, count input  -> past kept in the network state. These six are models of the
+                                       paper (Table 1); its spiking variants are not retrained here.
+    no memory, count input          -> NOT in the paper: lower bound, no motion information in the input
+    no memory, voxel input          -> NOT in the paper: past encoded in the input by hand
+The paper reports one result per model and no seeds; the three seeds are an addition.
+Step 3 (how much past in the input): the same networks with longer input windows. NOT in the paper.
 Step 4 (AffineObjects): initial configs on the simulated dataset of EV-LayerSegNet. NOT yet run.
 """
 
@@ -131,13 +133,9 @@ def build():
         train["s4_affine_{}_w{}_seed0".format(tag, window)] = config
 
     # MVSEC with ground truth, as in the paper (configs/eval_MVSEC.yml without the display).
-    # mvsec_test: the four sequences of Table 1 (final numbers only).
-    # mvsec_val:  the other sequences with ground truth (model selection and tuning).
-    # Both folders are created by experiments/split_mvsec.py.
-    for split, tag in [("mvsec_test", "mvsec"), ("mvsec_val", "mvsec_val")]:
-        path = "${EVFLOW_DATA}/splits/" + split + "/"
-        evals["eval_{}_dt1".format(tag)] = eval_config(path, "gtflow_dt1", 1, 15000, ["AEE"], [256, 256], 128)
-        evals["eval_{}_dt4".format(tag)] = eval_config(path, "gtflow_dt4", 0.25, 15000, ["AEE"], [256, 256], 128)
+    # The paper has no validation set: training uses UZH-FPV only and MVSEC is used for evaluation only.
+    evals["eval_mvsec_dt1"] = eval_config("${EVFLOW_DATA}/MVSEC/", "gtflow_dt1", 1, 15000, ["AEE"], [256, 256], 128)
+    evals["eval_mvsec_dt4"] = eval_config("${EVFLOW_DATA}/MVSEC/", "gtflow_dt4", 0.25, 15000, ["AEE"], [256, 256], 128)
 
     # datasets without ground truth, as in the paper (configs/eval_ECD.yml, configs/eval_HQF.yml)
     for name in ["ECD", "HQF"]:

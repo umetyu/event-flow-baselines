@@ -218,7 +218,7 @@ def main():
         import mlflow
 
         import models.model as zoo
-        from experiments.common import list_runs
+        from experiments.common import list_runs, read_metric
 
         mlflow.set_tracking_uri(resolve_tracking_uri(path_mlflow))
         source = [r for r in list_runs(path_mlflow) if r["name"] == args.models[0]][0]
@@ -251,6 +251,27 @@ def main():
         failed.append("foreign-run check")
         print("FAIL foreign-run check {}: {}".format(type(e).__name__, e))
 
+    # ---- same seed, same result: repeat the first training in the (now non-empty) tracking folder,
+    # once with and once without a run name, and compare the losses of all epochs
+    try:
+        name, encoding, num_bins = args.models[0].split(":")
+        cfg = os.path.join(tmp, "train.yml")
+        with open(cfg, "w") as fid:
+            yaml.safe_dump(train_config(data_dir, name, encoding, int(num_bins)), fid)
+        curves = []
+        for extra in [["--run_name", "repeat"], []]:
+            out = run([sys.executable, "train_flow.py", "--config", cfg, "--path_mlflow", path_mlflow] + extra, ROOT)
+            curves.append([line.split("|")[1] for line in out.splitlines() if line.startswith("Epoch")])
+        first = [r for r in list_runs(path_mlflow) if r["name"] == args.models[0]][0]
+        reference = [" loss {:.6f} ".format(v) for _, v in read_metric(first["dir"], "loss")]
+        assert len(reference) > 0 and curves[0] == reference and curves[1] == reference, (
+            "losses differ between runs with the same seed: {} / {} / {}".format(reference[:2], curves[0][:2], curves[1][:2])
+        )
+        print("OK   repeated training with the same seed gives identical losses ({} epochs)".format(len(reference)))
+    except Exception as e:
+        failed.append("determinism check")
+        print("FAIL determinism check {}: {}".format(type(e).__name__, e))
+
     # ---- experiment scripts: suite evaluation, skipping of finished suites, result tables
     try:
         config_dir = os.path.join(tmp, "configs")
@@ -259,11 +280,11 @@ def main():
             config = eval_config(data_dir, "gtflow_dt4")
             config["data"]["window"] = 0.25
             yaml.safe_dump(config, fid)
-        with open(os.path.join(config_dir, "eval_mvsec_val_dt1.yml"), "w") as fid:
+        with open(os.path.join(config_dir, "eval_mvsec_dt1.yml"), "w") as fid:
             yaml.safe_dump(eval_config(data_dir, "gtflow_dt1"), fid)
         results2 = os.path.join(tmp, "results2") + "/"
         cmd = [
-            sys.executable, "experiments/evaluate.py", "--suites", "mvsec_dt4", "mvsec_val_dt1", "--runs", args.models[0],
+            sys.executable, "experiments/evaluate.py", "--suites", "mvsec_dt4", "mvsec_dt1", "--runs", args.models[0],
             "--path_mlflow", path_mlflow, "--path_results", results2, "--config_dir", config_dir,
         ]
         first = run(cmd, ROOT)
@@ -283,29 +304,6 @@ def main():
     except Exception as e:
         failed.append("experiment-scripts check")
         print("FAIL experiment-scripts check {}: {}".format(type(e).__name__, e))
-
-    # ---- MVSEC test/validation split
-    try:
-        mvsec = os.path.join(tmp, "pack", "MVSEC")
-        os.makedirs(mvsec)
-        names = ["outdoor_day1", "indoor_flying1", "indoor_flying2", "indoor_flying3"]
-        for i, seq in enumerate(names + ["outdoor_day2"]):
-            make_sequence(os.path.join(mvsec, seq + "_data.h5"), num_events=2000, seed=i)
-        env = dict(os.environ, EVFLOW_DATA=os.path.join(tmp, "pack"))
-        subprocess.run([sys.executable, "experiments/split_mvsec.py"], cwd=ROOT, env=env, check=True,
-                       stdout=subprocess.DEVNULL)
-        test = sorted(os.listdir(os.path.join(tmp, "pack", "splits", "mvsec_test")))
-        val = sorted(os.listdir(os.path.join(tmp, "pack", "splits", "mvsec_val")))
-        assert test == sorted(n + "_data.h5" for n in names), test
-        assert val == ["outdoor_day2_data.h5"], val
-        os.remove(os.path.join(mvsec, "outdoor_day2_data.h5"))
-        only_test = subprocess.run([sys.executable, "experiments/split_mvsec.py", "--dry-run"], cwd=ROOT, env=env,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        assert only_test.returncode != 0, "an empty validation split must be an error"
-        print("OK   split_mvsec.py separates test and validation sequences")
-    except Exception as e:
-        failed.append("mvsec-split check")
-        print("FAIL mvsec-split check {}: {}".format(type(e).__name__, e))
 
     # evaluation must refuse to run without weights
     with open(os.path.join(tmp, "eval.yml"), "w") as fid:
