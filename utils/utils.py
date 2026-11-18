@@ -1,5 +1,6 @@
 import glob
 import os
+import warnings
 from pathlib import Path
 
 # the experiments rely on the local file store (run folders are read directly); newer MLflow
@@ -107,8 +108,11 @@ def load_model(prev_runid, model, device, strict=False):
     try:
         model_loaded = torch.load(model_dir, map_location=device, weights_only=True)
     except Exception:
-        # checkpoints of the original authors are pickled nn.Modules (trusted source)
-        model_loaded = torch.load(model_dir, map_location=device, weights_only=False)
+        # checkpoints of the original authors are pickled nn.Modules (trusted source). Only their
+        # state dict is used, so the warnings about classes whose source changed are not relevant.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=torch.serialization.SourceChangeWarning)
+            model_loaded = torch.load(model_dir, map_location=device, weights_only=False)
     if isinstance(model_loaded, torch.nn.Module):
         model_loaded = model_loaded.state_dict()
     model.load_state_dict(model_loaded)

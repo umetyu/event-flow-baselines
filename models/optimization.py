@@ -18,7 +18,9 @@ ExternalCMax    wrapper around the public code of Shiba et al., "Secrets of Even
                 folder given by the environment variable EVFLOW_SHIBA_REPO.
 """
 
+import contextlib
 import copy
+import io
 import os
 import sys
 
@@ -279,7 +281,9 @@ class ExternalCMax(EventOptimizer):
         scratch = os.environ.get("EVFLOW_SHIBA_SCRATCH", os.environ.get("TMPDIR", "/tmp"))
         os.chdir(scratch)  # the external solver writes a profile file into the working directory
         try:
-            motion = self.solver.optimize(events)
+            # the external solver prints a convergence report for every scale of every window
+            with contextlib.redirect_stdout(io.StringIO()):
+                motion = self.solver.optimize(events)
             if self.buffer_full:
                 self.solver.set_previous_frame_best_estimation(motion)
             else:
