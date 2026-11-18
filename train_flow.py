@@ -57,6 +57,11 @@ def train(args, config_parser):
     # log git diff
     save_diff("train_diff.txt")
 
+    # MLflow draws from Python's global random generator (run names, experiment ids) a number of
+    # times that depends on the state of the tracking folder. Seed again here so that the sequence
+    # order, the augmentation and the weight initialization depend on loader.seed only.
+    config_parser.init_seeds()
+
     # initialize settings
     device = config_parser.device
     kwargs = config_parser.loader_kwargs
