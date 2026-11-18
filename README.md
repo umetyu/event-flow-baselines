@@ -68,19 +68,11 @@
 
 ### コードをIzarに置く
 
-リポジトリは非公開なので、Izarでは `git clone` の代わりに、Macから送ったバンドル(1ファイル)を使います。
-
 ```bash
-# Macで
-scp -i ~/.ssh/id_ed25519 ~/codes_github/event-flow-baselines.bundle umetsu@izar.hpc.epfl.ch:~/
-ssh -i ~/.ssh/id_ed25519 umetsu@izar.hpc.epfl.ch
-# Izarで(初回)
-git clone ~/event-flow-baselines.bundle ~/projects/event-flow-baselines
-# Izarで(更新時。新しいバンドルを同じ場所に送り直してから)
-cd ~/projects/event-flow-baselines && git pull
+git clone https://github.com/umetyu/event-flow-baselines.git ~/projects/event-flow-baselines
 ```
 
-リポジトリを公開にすれば、バンドルなしで `git clone https://github.com/umetyu/event-flow-baselines.git` と `git pull` が使えます。
+更新するときは `cd ~/projects/event-flow-baselines && git pull` です。
 
 ### 初回の一括実行
 
