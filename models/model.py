@@ -67,6 +67,7 @@ class E2VID(BaseModel):
         unet_kwargs.pop("name", None)
         unet_kwargs.pop("encoding", None)
         unet_kwargs.pop("round_encoding", None)
+        unet_kwargs.pop("ts_taus", None)
         unet_kwargs.pop("norm_input", None)
         unet_kwargs.pop("mask_output", None)
         unet_kwargs.pop("spiking_neuron", None)
@@ -108,7 +109,7 @@ class E2VID(BaseModel):
         """
 
         # input encoding
-        if self.encoding == "voxel":
+        if self.encoding in ("voxel", "ts"):  # ts: time surface, see dataloader/base.py
             x = event_voxel
         elif self.encoding == "cnt" and self.num_bins == 2:
             x = event_cnt
@@ -235,7 +236,7 @@ class FireNet(BaseModel):
         """
 
         # input encoding
-        if self.encoding == "voxel":
+        if self.encoding in ("voxel", "ts"):  # ts: time surface, see dataloader/base.py
             x = event_voxel
         elif self.encoding == "cnt" and self.num_bins == 2:
             x = event_cnt
@@ -320,6 +321,7 @@ class EVFlowNet(BaseModel):
         unet_kwargs.pop("eval", None)
         unet_kwargs.pop("encoding", None)
         unet_kwargs.pop("round_encoding", None)
+        unet_kwargs.pop("ts_taus", None)
         unet_kwargs.pop("mask_output", None)
         unet_kwargs.pop("norm_input", None)
         unet_kwargs.pop("spiking_neuron", None)
@@ -344,7 +346,7 @@ class EVFlowNet(BaseModel):
         """
 
         # input encoding
-        if self.encoding == "voxel":
+        if self.encoding in ("voxel", "ts"):  # ts: time surface, see dataloader/base.py
             x = event_voxel
         elif self.encoding == "cnt" and self.num_bins == 2:
             x = event_cnt
@@ -456,6 +458,7 @@ class RecEVFlowNet(BaseModel):
         unet_kwargs.pop("name", None)
         unet_kwargs.pop("encoding", None)
         unet_kwargs.pop("round_encoding", None)
+        unet_kwargs.pop("ts_taus", None)
         unet_kwargs.pop("norm_input", None)
         unet_kwargs.pop("mask_output", None)
 
@@ -496,7 +499,7 @@ class RecEVFlowNet(BaseModel):
         """
 
         # input encoding
-        if self.encoding == "voxel":
+        if self.encoding in ("voxel", "ts"):  # ts: time surface, see dataloader/base.py
             x = event_voxel
         elif self.encoding == "cnt" and self.num_bins == 2:
             x = event_cnt

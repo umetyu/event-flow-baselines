@@ -3,7 +3,8 @@ Plot the training loss per epoch of MLflow runs and mark the epoch whose weights
 
 train_flow.py (like the upstream code) saves the model only when the epoch-average training loss
 reaches a new minimum, so the kept weights are those of the epoch with the lowest training loss.
-There is no validation set (as in Hagenaars et al. 2021), so no inference-time loss is logged.
+Runs trained with a validation block (step 5) also log "val_loss" after every epoch (CMax loss on MVSEC
+chunks, monitoring only); it is drawn dashed in the same colour.
 
     python experiments/plot_loss.py --runs EVFlowNet s2_evflownet-voxel5_w1000_seed0 \
         --labels "ConvGRU EV-FlowNet" "EV-FlowNet + voxel (5 bins)" --out results/loss.png
@@ -51,19 +52,27 @@ def main():
     args = parser.parse_args()
     labels = args.labels or args.runs
 
-    fig, ax = plt.subplots(figsize=(7, 4.2))
+    fig, ax = plt.subplots(figsize=(8, 4.8))
     for key, label in zip(args.runs, labels):
         points = read_metric(find_run(args.mlruns, key), args.metric)
         epochs = [e for e, _ in points]
         values = [v for _, v in points]
         best = min(range(len(values)), key=values.__getitem__)
-        line, = ax.plot(epochs, values, lw=1.5, label=label)
+        run_dir = find_run(args.mlruns, key)
+        line, = ax.plot(epochs, values, lw=1.5, label=label + " (train)")
         ax.plot(epochs[best], values[best], "o", color=line.get_color(), ms=6)
         print("{}: {} epochs | best epoch {} loss {:.4f} (weights kept) | last epoch {} loss {:.4f}".format(
             label, len(values), epochs[best], values[best], epochs[-1], values[-1]))
+        if os.path.exists(os.path.join(run_dir, "metrics", "val_loss")):
+            val = read_metric(run_dir, "val_loss")
+            ax.plot([e for e, _ in val], [v for _, v in val], "--", lw=1.5, color=line.get_color(),
+                    label=label + " (val, MVSEC)")
+            vbest = min(val, key=lambda p: p[1])
+            print("  val_loss: lowest at epoch {} ({:.4f}) | at the kept epoch {}: {:.4f}".format(
+                vbest[0], vbest[1], epochs[best], dict(val).get(epochs[best], float("nan"))))
     ax.set_xlabel("epoch")
-    ax.set_ylabel("training loss (epoch average)")
-    ax.set_title("Training loss; dot = epoch whose weights are used")
+    ax.set_ylabel("loss (epoch average)")
+    ax.set_title("Loss per epoch; dot = epoch whose weights are used")
     ax.grid(alpha=0.3)
     ax.legend(frameon=False)
     fig.tight_layout()

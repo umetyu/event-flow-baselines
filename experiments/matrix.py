@@ -19,6 +19,11 @@ Step 2 (input representation x memory), training setup identical to Hagenaars et
 The paper reports one result per model and no seeds; the three seeds are an addition.
 Step 3 (how much past in the input): the same networks with longer input windows. NOT in the paper.
 Step 4 (AffineObjects): initial configs on the simulated dataset of EV-LayerSegNet. NOT yet run.
+Step 5 (time surfaces): non-recurrent EV-FlowNet with a signed multi time-constant time surface as
+    input ("last event only", see dataloader/base.py), tau = 2/8/32/128/512 ms (ts5) and 5/20/80 ms (ts3),
+    plus the count and voxel5 baselines again. Same training as step 2, and in addition a validation
+    loss on MVSEC chunks after every epoch (experiments/make_val_chunks.py). The validation loss is
+    only monitored; the saved weights are still those of the lowest training loss.
 """
 
 import argparse
@@ -98,6 +103,15 @@ STEP4_MODELS = {
 }
 
 
+# Step 5: time constants in seconds; the validation data are MVSEC chunks at full resolution.
+STEP5_TS = {
+    "evflownet-ts5": [0.002, 0.008, 0.032, 0.128, 0.512],
+    "evflownet-ts3": [0.005, 0.02, 0.08],
+}
+STEP5_BASELINES = ["evflownet-cnt", "evflownet-voxel5"]
+VALIDATION = {"enabled": True, "path": "${EVFLOW_DATA}/validation_mvsec/", "resolution": [256, 256], "batch_size": 8}
+
+
 def train_config(tag, window, seed, experiment):
     name, encoding, num_bins, lr, _ = MODELS[tag]
     config = copy.deepcopy(BASE)
@@ -147,6 +161,18 @@ def build():
         config["loader"]["resolution"] = [480, 640]
         config["loader"]["batch_size"] = batch_size
         train["s4_affine_{}_w{}_seed0".format(tag, window)] = config
+
+    for tag, taus in STEP5_TS.items():
+        config = train_config("evflownet-cnt", 1000, 0, "step5")
+        config["model"]["encoding"] = "ts"
+        config["model"]["num_bins"] = len(taus)
+        config["model"]["ts_taus"] = taus
+        config["validation"] = copy.deepcopy(VALIDATION)
+        train["s5_{}_w1000_seed0".format(tag)] = config
+    for tag in STEP5_BASELINES:
+        config = train_config(tag, 1000, 0, "step5")
+        config["validation"] = copy.deepcopy(VALIDATION)
+        train["s5_{}_w1000_seed0".format(tag)] = config
 
     # MVSEC with ground truth, as in the paper (configs/eval_MVSEC.yml without the display).
     # The paper has no validation set: training uses UZH-FPV only and MVSEC is used for evaluation only.

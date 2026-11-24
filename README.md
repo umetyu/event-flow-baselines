@@ -211,6 +211,26 @@ sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step3" cluster/eval.sbatc
 
 `evflownet-cnt`、`evflownet-voxel5`、`gru-evflownet-cnt` について、順伝播1回あたりのイベント数を2,500、5,000、10,000に増やします(1,000は上の実験に含まれます)。損失の窓は10,000イベントで固定です。「どれだけ過去を入れると良いか」の曲線になり、後でHebbian機構が狙う対象です。
 
+### タイムサーフェス入力(step 5)
+
+記憶なしのEV-FlowNetに、複数の時定数τのタイムサーフェスを入力する(`model.encoding: ts`)。各画素は系列の中で最後のイベントの時刻と極性を覚えておき、窓の最後の時刻で `p × exp(−経過時間/τ)` を τ ごとに1チャンネルとして出す(イベントのない画素は0)。実装は `dataloader/base.py` の `create_ts_encoding`。
+
+| 設定 | τ | チャンネル |
+|---|---|---|
+| `s5_evflownet-ts5_w1000_seed0` | 2, 8, 32, 128, 512 ms | 5 |
+| `s5_evflownet-ts3_w1000_seed0` | 5, 20, 80 ms | 3 |
+| `s5_evflownet-cnt_w1000_seed0`, `s5_evflownet-voxel5_w1000_seed0` | ベースライン(validation付きで再学習する場合) | 2, 5 |
+
+学習はstep 2と同じ(UZH-FPV、100 epoch)。加えて各epochの後に、MVSECから切り出した塊(各系列2つ×50万イベント、`experiments/make_val_chunks.py`)で学習と同じCMax lossを計算し `val_loss` として記録する。MVSECは評価データなので、val_lossは見るだけで、保存する重みの選択には使わない(training loss最小のepochのまま)。validationは乱数とモデルの状態を元に戻すので、学習の結果は変わらない。
+
+```bash
+bash cluster/submit_step5.sh                         # ts5とts3(学習のあとMVSEC評価を自動で実行)
+bash cluster/submit_step5.sh configs/exp/s5_*.yml    # ベースライン2本もvalidation付きで学習
+python experiments/plot_loss.py --runs s5_evflownet-ts5_w1000_seed0 s5_evflownet-ts3_w1000_seed0 --out results/loss_step5.png
+```
+
+学習ログの最初の方に、τごとの値の分布(`time surface statistics`)が出る。あるチャンネルがほぼ0かほぼ1ばかりなら、そのτは学習データに合っていない。
+
 ### AffineObjects(初期設定のみ)
 
 ```bash

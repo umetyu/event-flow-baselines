@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 
+import numpy as np
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +32,7 @@ DEFAULT_MODELS = [
     "EVFlowNet:cnt:2",
     "EVFlowNet:voxel:5",
     "EVFlowNet:voxel:9",
+    "EVFlowNet:ts:3",
     "RecEVFlowNet:cnt:2",
     "RNNRecEVFlowNet:cnt:2",
     "LeakyRecEVFlowNet:cnt:2",
@@ -54,7 +56,7 @@ SPIKING = {
 
 def train_config(data_dir, name, encoding, num_bins):
     spiking = "Spiking" in name or "LIF" in name
-    return {
+    config = {
         "experiment": "smoke",
         "data": {"path": data_dir, "mode": "events", "window": 500, "window_loss": 2000},
         "model": {
@@ -83,6 +85,9 @@ def train_config(data_dir, name, encoding, num_bins):
         "vis": {"verbose": False, "enabled": False, "px": 400, "store_grads": False},
         "hot_filter": {"enabled": False, "max_px": 100, "min_obvs": 5, "max_rate": 0.8},
     }
+    if encoding == "ts":
+        config["model"]["ts_taus"] = [float(t) for t in np.geomspace(0.005, 0.08, num_bins)]
+    return config
 
 
 def eval_config(data_dir, mode):

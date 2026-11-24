@@ -31,6 +31,17 @@ class BaseDataLoader(torch.utils.data.Dataset):
                 if np.random.random() < self.config["loader"]["augment_prob"][i]:
                     self.batch_augmentation[mechanism][batch] = True
 
+        # time surfaces: per-pixel time and polarity of the most recent event, kept across windows
+        # of the same sequence (one entry per batch slot)
+        self.ts_taus = None
+        if self.config["model"].get("encoding", None) == "ts":
+            self.ts_taus = np.asarray(self.config["model"]["ts_taus"], dtype=np.float64)
+            if len(self.ts_taus) != num_bins:
+                raise ValueError("model.num_bins must equal the number of model.ts_taus")
+        self.ts_last = [None for i in range(self.config["loader"]["batch_size"])]
+        self.ts_pol = [None for i in range(self.config["loader"]["batch_size"])]
+        self.ts_tref = [None for i in range(self.config["loader"]["batch_size"])]
+
         # hot pixels
         if self.config["hot_filter"]["enabled"]:
             self.hot_idx = [0 for i in range(self.config["loader"]["batch_size"])]
@@ -53,6 +64,9 @@ class BaseDataLoader(torch.utils.data.Dataset):
         """
 
         self.seq_num += 1
+        self.ts_last[batch] = None
+        self.ts_pol[batch] = None
+        self.ts_tref[batch] = None
         if self.config["hot_filter"]["enabled"]:
             self.hot_idx[batch] = 0
             self.hot_events[batch] = torch.zeros(self.config["loader"]["resolution"])
@@ -193,6 +207,42 @@ class BaseDataLoader(torch.utils.data.Dataset):
             sensor_size=self.config["loader"]["resolution"],
             round_ts=self.round_encoding,
         )
+
+    def create_ts_encoding(self, xs, ys, ts_raw, ps, batch):
+        """
+        Signed multi time-constant time surface ("last event only"). Every pixel keeps the time and the
+        polarity of its most recent event, over all the windows of the current sequence; at the end
+        of each window its value for time constant tau is p_last * exp(-(t_end - t_last) / tau),
+        with t_end the time of the last event of the window. Pixels without events stay at 0.
+        :param xs: [N] tensor with (augmented) event x location
+        :param ys: [N] tensor with (augmented) event y location
+        :param ts_raw: [N] numpy array with event timestamps in seconds (not normalized)
+        :param ps: [N] tensor with (augmented) event polarity ([-1, 1])
+        :param batch: batch slot, whose memory is updated
+        :return [K x H x W] event representation, K = number of time constants
+        """
+
+        height, width = self.config["loader"]["resolution"]
+        if self.ts_last[batch] is None:
+            self.ts_last[batch] = np.full(height * width, -np.inf)
+            self.ts_pol[batch] = np.zeros(height * width, dtype=np.float32)
+            self.ts_tref[batch] = -np.inf
+
+        num_events = xs.shape[0]
+        if num_events > 0:
+            idx = ys.numpy().astype(np.int64) * width + xs.numpy().astype(np.int64)
+            # index of the last event of every pixel: first occurrence in the reversed list
+            pixels, first_rev = np.unique(idx[::-1], return_index=True)
+            last = num_events - 1 - first_rev
+            self.ts_last[batch][pixels] = ts_raw[last]
+            self.ts_pol[batch][pixels] = ps.numpy()[last]
+            self.ts_tref[batch] = ts_raw[-1]
+
+        if not np.isfinite(self.ts_tref[batch]):
+            return torch.zeros((len(self.ts_taus), height, width))
+        age = self.ts_tref[batch] - self.ts_last[batch]  # inf for pixels without events
+        surface = self.ts_pol[batch][None, :] * np.exp(-age[None, :] / self.ts_taus[:, None])
+        return torch.from_numpy(surface.astype(np.float32).reshape(len(self.ts_taus), height, width))
 
     @staticmethod
     def create_list_encoding(xs, ys, ts, ps):

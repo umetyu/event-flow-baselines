@@ -280,6 +280,7 @@ class H5Loader(BaseDataLoader):
             dt_input = np.asarray(0.0)
             if ts.shape[0] > 0:
                 dt_input = np.asarray(ts[-1] - ts[0])
+            ts_raw = np.asarray(ts, dtype=np.float64)
             xs, ys, ts, ps = self.event_formatting(xs, ys, ts, ps)
 
             # data augmentation
@@ -288,7 +289,10 @@ class H5Loader(BaseDataLoader):
             # events to tensors
             event_cnt = self.create_cnt_encoding(xs, ys, ps)
             event_mask = self.create_mask_encoding(xs, ys, ps)
-            event_voxel = self.create_voxel_encoding(xs, ys, ts, ps)
+            if self.ts_taus is not None:
+                event_voxel = self.create_ts_encoding(xs, ys, ts_raw, ps, batch)  # fed through the voxel slot
+            else:
+                event_voxel = self.create_voxel_encoding(xs, ys, ts, ps)
             event_list = self.create_list_encoding(xs, ys, ts, ps)
             event_list_pol_mask = self.create_polarity_mask(ps)
 
