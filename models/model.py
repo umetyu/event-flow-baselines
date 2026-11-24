@@ -68,6 +68,7 @@ class E2VID(BaseModel):
         unet_kwargs.pop("encoding", None)
         unet_kwargs.pop("round_encoding", None)
         unet_kwargs.pop("ts_taus", None)
+        unet_kwargs.pop("ts_split_polarity", None)
         unet_kwargs.pop("norm_input", None)
         unet_kwargs.pop("mask_output", None)
         unet_kwargs.pop("spiking_neuron", None)
@@ -322,6 +323,7 @@ class EVFlowNet(BaseModel):
         unet_kwargs.pop("encoding", None)
         unet_kwargs.pop("round_encoding", None)
         unet_kwargs.pop("ts_taus", None)
+        unet_kwargs.pop("ts_split_polarity", None)
         unet_kwargs.pop("mask_output", None)
         unet_kwargs.pop("norm_input", None)
         unet_kwargs.pop("spiking_neuron", None)
@@ -459,6 +461,7 @@ class RecEVFlowNet(BaseModel):
         unet_kwargs.pop("encoding", None)
         unet_kwargs.pop("round_encoding", None)
         unet_kwargs.pop("ts_taus", None)
+        unet_kwargs.pop("ts_split_polarity", None)
         unet_kwargs.pop("norm_input", None)
         unet_kwargs.pop("mask_output", None)
 

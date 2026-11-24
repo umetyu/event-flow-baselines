@@ -21,6 +21,7 @@ Step 3 (how much past in the input): the same networks with longer input windows
 Step 4 (AffineObjects): initial configs on the simulated dataset of EV-LayerSegNet. NOT yet run.
 Step 5 (time surfaces): non-recurrent EV-FlowNet with a signed multi time-constant time surface as
     input ("last event only", see dataloader/base.py), tau = 2/8/32/128/512 ms (ts5) and 5/20/80 ms (ts3),
+    either one signed channel per tau or one channel per tau and polarity (suffix "pol"),
     plus the count and voxel5 baselines again. Same training as step 2, and in addition a validation
     loss on MVSEC chunks after every epoch (experiments/make_val_chunks.py). The validation loss is
     only monitored; the saved weights are still those of the lowest training loss.
@@ -163,12 +164,14 @@ def build():
         train["s4_affine_{}_w{}_seed0".format(tag, window)] = config
 
     for tag, taus in STEP5_TS.items():
-        config = train_config("evflownet-cnt", 1000, 0, "step5")
-        config["model"]["encoding"] = "ts"
-        config["model"]["num_bins"] = len(taus)
-        config["model"]["ts_taus"] = taus
-        config["validation"] = copy.deepcopy(VALIDATION)
-        train["s5_{}_w1000_seed0".format(tag)] = config
+        for split in [False, True]:
+            config = train_config("evflownet-cnt", 1000, 0, "step5")
+            config["model"]["encoding"] = "ts"
+            config["model"]["num_bins"] = len(taus) * (2 if split else 1)
+            config["model"]["ts_taus"] = taus
+            config["model"]["ts_split_polarity"] = split
+            config["validation"] = copy.deepcopy(VALIDATION)
+            train["s5_{}{}_w1000_seed0".format(tag, "pol" if split else "")] = config
     for tag in STEP5_BASELINES:
         config = train_config(tag, 1000, 0, "step5")
         config["validation"] = copy.deepcopy(VALIDATION)

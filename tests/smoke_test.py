@@ -33,6 +33,7 @@ DEFAULT_MODELS = [
     "EVFlowNet:voxel:5",
     "EVFlowNet:voxel:9",
     "EVFlowNet:ts:3",
+    "EVFlowNet:tspol:6",
     "RecEVFlowNet:cnt:2",
     "RNNRecEVFlowNet:cnt:2",
     "LeakyRecEVFlowNet:cnt:2",
@@ -85,8 +86,11 @@ def train_config(data_dir, name, encoding, num_bins):
         "vis": {"verbose": False, "enabled": False, "px": 400, "store_grads": False},
         "hot_filter": {"enabled": False, "max_px": 100, "min_obvs": 5, "max_rate": 0.8},
     }
-    if encoding == "ts":
-        config["model"]["ts_taus"] = [float(t) for t in np.geomspace(0.005, 0.08, num_bins)]
+    if encoding in ("ts", "tspol"):
+        split = encoding == "tspol"
+        config["model"]["encoding"] = "ts"
+        config["model"]["ts_split_polarity"] = split
+        config["model"]["ts_taus"] = [float(t) for t in np.geomspace(0.005, 0.08, num_bins // (2 if split else 1))]
     return config
 
 

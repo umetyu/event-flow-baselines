@@ -34,10 +34,12 @@ class BaseDataLoader(torch.utils.data.Dataset):
         # time surfaces: per-pixel time and polarity of the most recent event, kept across windows
         # of the same sequence (one entry per batch slot)
         self.ts_taus = None
+        self.ts_split = False
         if self.config["model"].get("encoding", None) == "ts":
             self.ts_taus = np.asarray(self.config["model"]["ts_taus"], dtype=np.float64)
-            if len(self.ts_taus) != num_bins:
-                raise ValueError("model.num_bins must equal the number of model.ts_taus")
+            self.ts_split = bool(self.config["model"].get("ts_split_polarity", False))
+            if len(self.ts_taus) * (2 if self.ts_split else 1) != num_bins:
+                raise ValueError("model.num_bins must equal the number of model.ts_taus (x2 if ts_split_polarity)")
         self.ts_last = [None for i in range(self.config["loader"]["batch_size"])]
         self.ts_pol = [None for i in range(self.config["loader"]["batch_size"])]
         self.ts_tref = [None for i in range(self.config["loader"]["batch_size"])]
@@ -210,39 +212,54 @@ class BaseDataLoader(torch.utils.data.Dataset):
 
     def create_ts_encoding(self, xs, ys, ts_raw, ps, batch):
         """
-        Signed multi time-constant time surface ("last event only"). Every pixel keeps the time and the
-        polarity of its most recent event, over all the windows of the current sequence; at the end
-        of each window its value for time constant tau is p_last * exp(-(t_end - t_last) / tau),
-        with t_end the time of the last event of the window. Pixels without events stay at 0.
+        Multi time-constant time surface ("last event only"). Every pixel keeps the time (and polarity)
+        of its most recent event over all the windows of the current sequence; at the end of each
+        window, t_end = time of the last event of the window, and for every time constant tau:
+        - signed (default): one channel, p_last * exp(-(t_end - t_last) / tau), in [-1, 1]
+        - model.ts_split_polarity: two channels, exp(-(t_end - t_last_pos) / tau) and the same for the
+          last negative event, in [0, 1]; channel order [pos tau_1..tau_K, neg tau_1..tau_K]
+        Pixels without events stay at 0.
         :param xs: [N] tensor with (augmented) event x location
         :param ys: [N] tensor with (augmented) event y location
         :param ts_raw: [N] numpy array with event timestamps in seconds (not normalized)
         :param ps: [N] tensor with (augmented) event polarity ([-1, 1])
         :param batch: batch slot, whose memory is updated
-        :return [K x H x W] event representation, K = number of time constants
+        :return [C x H x W] event representation, C = K or 2K
         """
 
         height, width = self.config["loader"]["resolution"]
+        planes = 2 if self.ts_split else 1
         if self.ts_last[batch] is None:
-            self.ts_last[batch] = np.full(height * width, -np.inf)
+            self.ts_last[batch] = np.full((planes, height * width), -np.inf)
             self.ts_pol[batch] = np.zeros(height * width, dtype=np.float32)
             self.ts_tref[batch] = -np.inf
 
         num_events = xs.shape[0]
         if num_events > 0:
             idx = ys.numpy().astype(np.int64) * width + xs.numpy().astype(np.int64)
-            # index of the last event of every pixel: first occurrence in the reversed list
-            pixels, first_rev = np.unique(idx[::-1], return_index=True)
-            last = num_events - 1 - first_rev
-            self.ts_last[batch][pixels] = ts_raw[last]
-            self.ts_pol[batch][pixels] = ps.numpy()[last]
+            pol = ps.numpy()
+            if self.ts_split:
+                for plane, mask in enumerate([pol > 0, pol <= 0]):
+                    if mask.any():
+                        sel = np.nonzero(mask)[0]
+                        # index of the last event of every pixel: first occurrence in the reversed list
+                        pixels, first_rev = np.unique(idx[sel][::-1], return_index=True)
+                        self.ts_last[batch][plane, pixels] = ts_raw[sel[len(sel) - 1 - first_rev]]
+            else:
+                pixels, first_rev = np.unique(idx[::-1], return_index=True)
+                last = num_events - 1 - first_rev
+                self.ts_last[batch][0, pixels] = ts_raw[last]
+                self.ts_pol[batch][pixels] = pol[last]
             self.ts_tref[batch] = ts_raw[-1]
 
+        channels = len(self.ts_taus) * planes
         if not np.isfinite(self.ts_tref[batch]):
-            return torch.zeros((len(self.ts_taus), height, width))
-        age = self.ts_tref[batch] - self.ts_last[batch]  # inf for pixels without events
-        surface = self.ts_pol[batch][None, :] * np.exp(-age[None, :] / self.ts_taus[:, None])
-        return torch.from_numpy(surface.astype(np.float32).reshape(len(self.ts_taus), height, width))
+            return torch.zeros((channels, height, width))
+        age = self.ts_tref[batch] - self.ts_last[batch]  # [planes, H*W], inf for pixels without events
+        surface = np.exp(-age[:, None, :] / self.ts_taus[None, :, None])  # [planes, K, H*W]
+        if not self.ts_split:
+            surface = surface * self.ts_pol[batch][None, None, :]
+        return torch.from_numpy(surface.astype(np.float32).reshape(channels, height, width))
 
     @staticmethod
     def create_list_encoding(xs, ys, ts, ps):

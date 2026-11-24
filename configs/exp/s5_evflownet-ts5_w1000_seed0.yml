@@ -23,6 +23,7 @@ model:
   - 0.032
   - 0.128
   - 0.512
+  ts_split_polarity: false
 spiking_neuron: null
 loss:
   flow_regul_weight: 0.001

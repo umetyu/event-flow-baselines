@@ -213,12 +213,14 @@ sbatch --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="step3" cluster/eval.sbatc
 
 ### タイムサーフェス入力(step 5)
 
-記憶なしのEV-FlowNetに、複数の時定数τのタイムサーフェスを入力する(`model.encoding: ts`)。各画素は系列の中で最後のイベントの時刻と極性を覚えておき、窓の最後の時刻で `p × exp(−経過時間/τ)` を τ ごとに1チャンネルとして出す(イベントのない画素は0)。実装は `dataloader/base.py` の `create_ts_encoding`。
+記憶なしのEV-FlowNetに、複数の時定数τのタイムサーフェスを入力する(`model.encoding: ts`)。各画素は系列の中で最後のイベントの時刻と極性を覚えておき、窓の最後の時刻で `p × exp(−経過時間/τ)` を τ ごとに1チャンネルとして出す(イベントのない画素は0)。`model.ts_split_polarity: true` では正と負のイベントを別々に覚え、τ ごとに `exp(−経過時間/τ)` を2チャンネル出す(順番は正のτ1..τK、負のτ1..τK)。実装は `dataloader/base.py` の `create_ts_encoding`。
 
 | 設定 | τ | チャンネル |
 |---|---|---|
-| `s5_evflownet-ts5_w1000_seed0` | 2, 8, 32, 128, 512 ms | 5 |
-| `s5_evflownet-ts3_w1000_seed0` | 5, 20, 80 ms | 3 |
+| `s5_evflownet-ts5_w1000_seed0` | 2, 8, 32, 128, 512 ms(極性を符号で1チャンネル) | 5 |
+| `s5_evflownet-ts3_w1000_seed0` | 5, 20, 80 ms(同上) | 3 |
+| `s5_evflownet-ts5pol_w1000_seed0` | 2, 8, 32, 128, 512 ms(正と負で別チャンネル) | 10 |
+| `s5_evflownet-ts3pol_w1000_seed0` | 5, 20, 80 ms(同上) | 6 |
 | `s5_evflownet-cnt_w1000_seed0`, `s5_evflownet-voxel5_w1000_seed0` | ベースライン(validation付きで再学習する場合) | 2, 5 |
 
 学習はstep 2と同じ(UZH-FPV、100 epoch)。加えて各epochの後に、MVSECから切り出した塊(各系列2つ×50万イベント、`experiments/make_val_chunks.py`)で学習と同じCMax lossを計算し `val_loss` として記録する。MVSECは評価データなので、val_lossは見るだけで、保存する重みの選択には使わない(training loss最小のepochのまま)。validationは乱数とモデルの状態を元に戻すので、学習の結果は変わらない。

@@ -147,10 +147,14 @@ def update_ts_stats(stats, inputs, config, num_passes=500):
     if stats["passes"] == num_passes:
         print("time surface statistics over {} passes (pixels with events so far):".format(num_passes))
         print("  input window: {:.2f} ms on average".format(1000 * stats["dt_input"] / num_passes))
-        for i, tau in enumerate(config["model"]["ts_taus"]):
+        taus = config["model"]["ts_taus"]
+        split = config["model"].get("ts_split_polarity", False)
+        labels = (["pos"] * len(taus) + ["neg"] * len(taus)) if split else [""] * len(taus)
+        for i, (tau, label) in enumerate(zip(list(taus) * (2 if split else 1), labels)):
             print(
-                "  tau {:7.1f} ms | mean |value| {:.3f} | >0.05 {:.3f} | >0.95 {:.3f}".format(
+                "  tau {:7.1f} ms {:3s} | mean |value| {:.3f} | >0.05 {:.3f} | >0.95 {:.3f}".format(
                     1000 * tau,
+                    label,
                     stats["mean"][i].item() / num_passes,
                     stats["above_0.05"][i].item() / num_passes,
                     stats["above_0.95"][i].item() / num_passes,
