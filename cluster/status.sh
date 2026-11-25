@@ -12,7 +12,10 @@ for log in $(ls -t logs/*.out 2>/dev/null | grep -v smoke- | head -8); do
     echo "== $log"
     grep -E '^(config:|MLflow run ID)' "$log" | head -2
     grep -E '^(validation data|time surface|  input window|  tau )' "$log"
-    grep -E '^Epoch' "$log" | (head -3; echo '...'; tail -2) | awk '!seen[$0]++'
+    epochs="$(grep -E '^Epoch' "$log" || true)"
+    if [[ -n "$epochs" ]]; then
+        { echo "$epochs" | head -3; echo '...'; echo "$epochs" | tail -2; } | awk '!seen[$0]++'
+    fi
     grep -E '^(estimator:|eval |done |Optimized|FAILED|Traceback)' "$log" | tail -4
     grep -q -E '^(Epoch|eval |done )' "$log" || tail -12 "$log"
 done
