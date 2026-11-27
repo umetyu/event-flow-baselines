@@ -83,6 +83,17 @@ def test(args, config_parser):
         assert "metrics" in config.keys() and config["metrics"]["name"] == ["AEE"], "A stride needs AEE only"
         config["metrics"]["stride"] = stride
 
+    # Diagnostic for inputs that do not show the window length (time surfaces): the network predicts the
+    # displacement over its input window, but a time surface only shows how long ago each pixel fired, so
+    # the network can only learn the displacement over the average training window. With
+    # EVFLOW_FLOW_DT_REF = that average (seconds), the output is rescaled by dt_input / dt_ref, i.e.
+    # read as a velocity times the actual window length. Stored with the evaluation settings and
+    # reported as a separate suite.
+    dt_ref = float(os.environ.get("EVFLOW_FLOW_DT_REF", "0") or 0)
+    if dt_ref > 0:
+        assert "metrics" in config.keys(), "EVFLOW_FLOW_DT_REF needs metrics"
+        config["metrics"]["flow_dt_ref"] = dt_ref
+
     if not args.debug:
         # create directory for inference results
         path_results = create_model_dir(args.path_results, args.runid)
@@ -187,6 +198,9 @@ def test(args, config_parser):
                         inputs["event_cnt"].to(device),
                         log=config["vis"]["activity"],
                     )
+                    if dt_ref > 0:
+                        scale = (inputs["dt_input"].float() / dt_ref).to(device).view(-1, 1, 1, 1)
+                        x["flow"] = [flow * scale for flow in x["flow"]]
 
                 # mask flow for visualization
                 flow_vis = x["flow"][-1].clone()

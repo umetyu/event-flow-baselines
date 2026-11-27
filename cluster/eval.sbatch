@@ -16,12 +16,14 @@
 # MODELS: model classes to keep, or "core" for the six models of the study; empty = all.
 # Add REFERENCE=1 to compare the MVSEC AEE with Table 1 of the paper.
 # STRIDE=n scores only every n-th ground-truth map (to compare with strided optimizer runs).
+# FLOW_DT_REF=s (seconds) rescales the output by dt_input / s (time-surface diagnostic, separate suite).
 set -eo pipefail
 cd "${SLURM_SUBMIT_DIR:?}"
 source cluster/env.sh
 set -u
 : "${SUITES:?Set SUITES, e.g. SUITES=\"mvsec_dt1 mvsec_dt4\"}"
 export EVFLOW_EVAL_STRIDE="${STRIDE:-1}"
+export EVFLOW_FLOW_DT_REF="${FLOW_DT_REF:-0}"
 nvidia-smi
 status=0
 # shellcheck disable=SC2086

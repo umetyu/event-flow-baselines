@@ -38,6 +38,9 @@ def suite_name(config):
     mode = data.get("mode", "")
     stride = int(config.get("metrics", {}).get("stride", 1))
     suffix = "" if stride == 1 else "_stride{}".format(stride)
+    dt_ref = float(config.get("metrics", {}).get("flow_dt_ref", 0) or 0)
+    if dt_ref > 0:
+        suffix += "_dtref{:g}ms".format(1000 * dt_ref)
     if mode in ["gtflow_dt1", "gtflow_dt4"]:
         return "{}_{}{}".format(folder, mode[-3:], suffix)
     return folder + suffix
@@ -152,8 +155,8 @@ def main():
                 entry, own = reference["literature"][key], False
             else:
                 continue
-            if "_stride" in suite:
-                continue  # only full evaluations are compared with the paper
+            if "_stride" in suite or "_dtref" in suite:
+                continue  # only full, unmodified evaluations are compared with the paper
             dt = suite[-3:]
             for i, name in enumerate(reference["sequences"]):
                 if name in seq:

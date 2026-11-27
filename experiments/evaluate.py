@@ -9,6 +9,7 @@ Evaluates trained (or pretrained) runs on one or more evaluation suites by calli
 Suites: mvsec_dt1, mvsec_dt4 (AEE, as in the paper), ecd, hqf (FWL/RSAT, as in the paper),
         affine (FWL/RSAT on AffineObjects, not in the paper).
 EVFLOW_EVAL_STRIDE=n scores only every n-th ground-truth map (reported as a separate suite).
+EVFLOW_FLOW_DT_REF=s rescales the output by dt_input / s (time-surface diagnostic, separate suite).
 Results land in results_inference/<run id>/ (metrics_<n>.yml + eval_<n>.yml) and are summarized by
 experiments/collect.py. A suite that was already evaluated for a run is skipped unless --force.
 """
@@ -47,6 +48,7 @@ def already_done(path_results, run_id, config):
     with open(config) as fid:
         wanted = yaml.safe_load(fid)["data"]
     stride = int(os.environ.get("EVFLOW_EVAL_STRIDE", "1"))
+    dt_ref = float(os.environ.get("EVFLOW_FLOW_DT_REF", "0") or 0)
     for path in glob.glob(os.path.join(path_results, run_id, "eval_*.yml")):
         with open(path) as fid:
             done_config = yaml.safe_load(fid)
@@ -54,6 +56,7 @@ def already_done(path_results, run_id, config):
         eval_id = os.path.basename(path)[5:-4]
         same = (
             stride == int(done_config.get("metrics", {}).get("stride", 1))
+            and dt_ref == float(done_config.get("metrics", {}).get("flow_dt_ref", 0))
             and os.path.basename(os.path.normpath(str(done.get("path", "")))) == os.path.basename(os.path.normpath(wanted["path"]))
             and done.get("mode") == wanted["mode"]
             and done.get("window") == wanted["window"]
