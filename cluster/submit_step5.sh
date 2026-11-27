@@ -41,11 +41,11 @@ for config in "${configs[@]}"; do
     echo "$name: training $train, evaluation $evaluation (after the training)"
     if grep -q "^checkpoints:" "$config"; then
         ckpt=$(sbatch --parsable --dependency=afterany:"$evaluation" \
-            --job-name="ckpt-$name" --export=ALL,SUITES="mvsec_dt1",RUNS="$name",CHECKPOINTS="all" cluster/eval.sbatch)
+            --job-name="ckpt-$name" --export=ALL,SUITES="mvsec_dt1",RUNS="$name",CHECKPOINTS="epoch_000? epoch_00?9 val_*" cluster/eval.sbatch)
         echo "$name: checkpoint evaluation $ckpt (after the evaluation)"
         # weights chosen by the validation losses, also on dt=4
         best=$(sbatch --parsable --dependency=afterany:"$ckpt" \
-            --job-name="valbest-$name" --export=ALL,SUITES="mvsec_dt4",RUNS="$name",CHECKPOINTS="val_best val_od2_best" \
+            --job-name="valbest-$name" --export=ALL,SUITES="mvsec_dt4",RUNS="$name",CHECKPOINTS="val_*" \
             cluster/eval.sbatch)
         echo "$name: dt=4 evaluation of the validation-selected weights $best (after that)"
     fi

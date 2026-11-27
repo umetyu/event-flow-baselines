@@ -15,6 +15,7 @@ experiments/collect.py. A suite that was already evaluated for a run is skipped 
 """
 
 import argparse
+import fnmatch
 import glob
 import os
 import subprocess
@@ -82,7 +83,7 @@ def main():
     parser.add_argument("--force", action="store_true")
     parser.add_argument(
         "--checkpoints", nargs="*", default=[],
-        help='intermediate weights to evaluate (names in artifacts/checkpoints/, "all" = every one); '
+        help='intermediate weights to evaluate (names or shell patterns in artifacts/checkpoints/, "all" = every one); '
         "default: only the weights of the lowest training loss",
     )
     args = parser.parse_args()
@@ -99,7 +100,7 @@ def main():
             continue
         ckpt_dir = os.path.join(run["dir"], "artifacts", "checkpoints")
         available = sorted(f[:-4] for f in os.listdir(ckpt_dir) if f.endswith(".pth")) if os.path.isdir(ckpt_dir) else []
-        wanted = available if "all" in args.checkpoints else [c for c in args.checkpoints if c in available]
+        wanted = [c for c in available if "all" in args.checkpoints or any(fnmatch.fnmatch(c, p) for p in args.checkpoints)]
         if not wanted:
             print("SKIP {}: no checkpoints {} in {}".format(run["name"] or run["run_id"], args.checkpoints, ckpt_dir))
         jobs += [(run, c) for c in wanted]

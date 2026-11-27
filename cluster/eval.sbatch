@@ -27,6 +27,7 @@ export EVFLOW_EVAL_STRIDE="${STRIDE:-1}"
 export EVFLOW_FLOW_DT_REF="${FLOW_DT_REF:-0}"
 nvidia-smi
 status=0
+set -f  # checkpoint patterns such as epoch_000? must reach evaluate.py unexpanded
 # shellcheck disable=SC2086
 "$BENCHMARK_PYTHON" -u experiments/evaluate.py --suites $SUITES --runs ${RUNS:-} --models ${MODELS:-} \
     ${CHECKPOINTS:+--checkpoints $CHECKPOINTS} --path_mlflow "$EVFLOW_MLRUNS" || status=$?

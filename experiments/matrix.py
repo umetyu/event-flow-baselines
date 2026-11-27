@@ -29,6 +29,7 @@ Step 5b (overfitting check): ts5pol, count and voxel5 again with intermediate ch
     for the first 10 epochs, then every 10th) and the weights of the lowest validation loss, so that the
     MVSEC AEE can be measured per epoch (experiments/plot_ckpt_aee.py). Second validation set: MVSEC
     outdoor_day2 (val_loss_od2); its lowest-loss weights (val_od2_best) are evaluated on MVSEC dt=1/dt=4.
+    (experiments/posthoc_val.py computes a validation loss of stored checkpoints after training.)
 """
 
 import argparse
