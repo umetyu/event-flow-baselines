@@ -10,6 +10,13 @@ hence the default size.
 
 The chunks are only used to monitor a validation loss during training. They come from the MVSEC
 evaluation sequences, so they must not be used to choose weights or hyper-parameters.
+
+outdoor_day2 (not an evaluation sequence; converted with tools/convert_mvsec_raw.py) can be used to
+choose weights:
+
+    python experiments/make_val_chunks.py --src $EVFLOW_DATA/MVSEC_od2 --dst $EVFLOW_DATA/validation_od2 --chunks 8
+
+(8 chunks, because the validation loader needs at least as many files as its batch size.)
 """
 
 import argparse

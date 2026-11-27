@@ -55,16 +55,17 @@ def main():
         main_rows = [float(r["value"]) for r in rows if r["run"] == key and r["metric"] == "AEE" and r["suite"] == args.suite]
         if main_rows:
             print("  weights of the lowest training loss: {:.3f}".format(statistics.mean(main_rows)))
-        if "val_best" in per:
-            print("  weights of the lowest validation loss: {:.3f}".format(statistics.mean(per["val_best"])))
+        for name in sorted(c for c in per if c.startswith("val_")):
+            print("  weights of the lowest {} loss: {:.3f}".format(name[:-5], statistics.mean(per[name])))
 
         run_dir = find_run(args.mlruns, key)
         loss = read_metric(run_dir, "loss")
         ax_loss.plot([e for e, _ in loss], [v for _, v in loss], lw=1.5, color=line.get_color(), label=label + " (train)")
-        if os.path.exists(os.path.join(run_dir, "metrics", "val_loss")):
-            val = read_metric(run_dir, "val_loss")
-            ax_loss.plot([e for e, _ in val], [v for _, v in val], "--", lw=1.5, color=line.get_color(),
-                         label=label + " (val, MVSEC)")
+        for metric, style, what in [("val_loss", "--", "val, MVSEC test chunks"), ("val_loss_od2", ":", "val, outdoor_day2")]:
+            if os.path.exists(os.path.join(run_dir, "metrics", metric)):
+                val = read_metric(run_dir, metric)
+                ax_loss.plot([e for e, _ in val], [v for _, v in val], style, lw=1.5, color=line.get_color(),
+                             label="{} ({})".format(label, what))
     ax_aee.set_ylabel("AEE " + args.suite.replace("_", " "))
     ax_aee.set_title("MVSEC AEE of the weights after each epoch")
     ax_aee.grid(alpha=0.3)

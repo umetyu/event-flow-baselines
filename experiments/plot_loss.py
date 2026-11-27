@@ -70,6 +70,12 @@ def main():
             vbest = min(val, key=lambda p: p[1])
             print("  val_loss: lowest at epoch {} ({:.4f}) | at the kept epoch {}: {:.4f}".format(
                 vbest[0], vbest[1], epochs[best], dict(val).get(epochs[best], float("nan"))))
+        if os.path.exists(os.path.join(run_dir, "metrics", "val_loss_od2")):
+            val = read_metric(run_dir, "val_loss_od2")
+            ax.plot([e for e, _ in val], [v for _, v in val], ":", lw=1.5, color=line.get_color(),
+                    label=label + " (val, outdoor_day2)")
+            vbest = min(val, key=lambda p: p[1])
+            print("  val_loss_od2: lowest at epoch {} ({:.4f})".format(vbest[0], vbest[1]))
     ax.set_xlabel("epoch")
     ax.set_ylabel("loss (epoch average)")
     ax.set_title("Loss per epoch; dot = epoch whose weights are used")

@@ -241,6 +241,14 @@ python experiments/plot_ckpt_aee.py --runs s5b_evflownet-ts5pol_w1000_seed0 s5b_
     s5b_evflownet-voxel5_w1000_seed0 --labels "time surface 5tau (pol)" count "voxel 5 bins" --out results/ckpt_aee.png
 ```
 
+2つ目の検証データとしてMVSEC outdoor_day2(MVSECの学習用系列で、テストには使わない)も使い、各epochで `val_loss_od2` を記録し、その最小の重み `val_od2_best` をMVSEC dt1/dt4でテストする。投入の前に一度だけ準備する:
+
+```bash
+python tools/convert_mvsec_raw.py --src /scratch/izar/umetsu/mvsec_raw/outdoor_day2_data.hdf5 \
+    --dst $EVFLOW_DATA/MVSEC_od2/outdoor_day2_data.h5
+# 検証用の塊(500k events × 8)は submit_step5.sh が無ければ作る
+```
+
 チェックポイントの結果は `results/runs.csv` に `MVSEC_dt1_ckpt-epoch_0002` のようなsuite名で入る(summary.mdには `val_best` だけ載せる)。MVSECはテストデータなので、ここで選んだ重みを論文の数値として報告しない。
 
 ### AffineObjects(初期設定のみ)

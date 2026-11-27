@@ -41,14 +41,15 @@ from utils.utils import load_model, resolve_tracking_uri, save_csv, save_diff, s
 from utils.visualization import Visualization
 
 
-def build_validation_config(config):
+def build_validation_config(config, val=None):
     """
-    Config of the validation pass, or None. The validation data is read with the training pipeline
-    (same windows, same loss) but without augmentation; it is only monitored and never used to pick
-    the saved weights, which stay those of the lowest training loss (as in the paper's code).
+    Config of a validation pass, or None. The validation data is read with the training pipeline
+    (same windows, same loss) but without augmentation. The saved model.pth stays the weights of the
+    lowest training loss (as in the paper's code); with a "checkpoints" block, the weights of the lowest
+    loss on each validation set are kept in addition (checkpoints/val_best.pth, val_<name>_best.pth).
     """
 
-    val = config.get("validation", None)
+    val = config.get("validation", None) if val is None else val
     if not val or not val.get("enabled", False):
         return None
     config_val = copy.deepcopy(config)
@@ -63,6 +64,23 @@ def build_validation_config(config):
     config_val["vis"]["enabled"] = False
     config_val["vis"]["verbose"] = False
     return config_val
+
+
+def build_validation_sets(config):
+    """
+    :return: list of (metric name, checkpoint name, config) for "validation" (val_loss, val_best) and
+    every entry <name> of "validation_extra" (val_loss_<name>, val_<name>_best)
+    """
+
+    sets = []
+    config_val = build_validation_config(config)
+    if config_val is not None:
+        sets.append(("val_loss", "val_best", config_val))
+    for name, val in (config.get("validation_extra", None) or {}).items():
+        config_val = build_validation_config(config, val)
+        if config_val is not None:
+            sets.append(("val_loss_" + name, "val_{}_best".format(name), config_val))
+    return sets
 
 
 def validate(model, config_val, device):
@@ -124,7 +142,10 @@ def validate(model, config_val, device):
     torch.set_rng_state(rng_state[2])
     if cuda_state is not None:
         torch.cuda.set_rng_state_all(cuda_state)
-    return total / max(samples, 1)
+    if samples == 0:
+        print("WARNING: no validation sample in {} (fewer events than window_loss?)".format(config_val["data"]["path"]))
+        return float("nan")
+    return total / samples
 
 
 def checkpoint_epoch(epoch, config):
@@ -227,9 +248,9 @@ def train(args, config_parser):
     loss_function = EventWarping(config, device)
 
     # optional validation pass after every epoch (monitoring only)
-    config_val = build_validation_config(config)
-    if config_val is not None:
-        print("validation data:", config_val["data"]["path"], flush=True)
+    val_sets = build_validation_sets(config)
+    for metric, _, config_val in val_sets:
+        print("validation data ({}): {}".format(metric, config_val["data"]["path"]), flush=True)
 
     # model initialization and settings
     model = eval(config["model"]["name"])(config["model"].copy()).to(device)
@@ -244,7 +265,7 @@ def train(args, config_parser):
     # simulation variables
     train_loss = 0
     best_loss = 1.0e6
-    best_val_loss = 1.0e6
+    best_val_loss = {metric: 1.0e6 for metric, _, _ in val_sets}
     end_train = False
     grads_w = []
     t_epoch = time.time()
@@ -268,18 +289,17 @@ def train(args, config_parser):
                 mlflow.log_metric("loss", train_loss / (data.samples + 1), step=data.epoch)
                 mlflow.log_metric("epoch_time_s", epoch_time, step=data.epoch)
                 val_text = ""
-                if config_val is not None:
+                for metric, ckpt_name, config_val in val_sets:
                     t_val = time.time()
                     val_loss = validate(model, config_val, device)
-                    mlflow.log_metric("val_loss", val_loss, step=data.epoch)
-                    val_text = " | val_loss {:.6f} ({:.0f} s)".format(val_loss, time.time() - t_val)
-                    if config.get("checkpoints", None) and val_loss < best_val_loss:
-                        # weights of the lowest validation loss (diagnostic: the validation data are
-                        # MVSEC chunks of the test sequences, so not for reporting)
+                    mlflow.log_metric(metric, val_loss, step=data.epoch)
+                    val_text += " | {} {:.6f} ({:.0f} s)".format(metric, val_loss, time.time() - t_val)
+                    if config.get("checkpoints", None) and val_loss < best_val_loss[metric]:
+                        # weights of the lowest loss on this validation set
                         with torch.no_grad():
-                            save_model(model, "val_best")
-                        best_val_loss = val_loss
-                        val_text += " (val best)"
+                            save_model(model, ckpt_name)
+                        best_val_loss[metric] = val_loss
+                        val_text += " (best)"
                 print(
                     "Epoch {:04d} done | loss {:.6f} | {:.0f} s{}".format(
                         data.epoch, train_loss / (data.samples + 1), epoch_time, val_text

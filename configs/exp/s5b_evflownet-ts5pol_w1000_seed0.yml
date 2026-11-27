@@ -68,3 +68,11 @@ validation:
 checkpoints:
   dense: 10
   every: 10
+validation_extra:
+  od2:
+    enabled: true
+    path: ${EVFLOW_DATA}/validation_od2/
+    resolution:
+    - 256
+    - 256
+    batch_size: 8

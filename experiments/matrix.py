@@ -27,7 +27,8 @@ Step 5 (time surfaces): non-recurrent EV-FlowNet with a signed multi time-consta
     only monitored; the saved weights are still those of the lowest training loss.
 Step 5b (overfitting check): ts5pol, count and voxel5 again with intermediate checkpoints (every epoch
     for the first 10 epochs, then every 10th) and the weights of the lowest validation loss, so that the
-    MVSEC AEE can be measured per epoch (experiments/plot_ckpt_aee.py).
+    MVSEC AEE can be measured per epoch (experiments/plot_ckpt_aee.py). Second validation set: MVSEC
+    outdoor_day2 (val_loss_od2); its lowest-loss weights (val_od2_best) are evaluated on MVSEC dt=1/dt=4.
 """
 
 import argparse
@@ -114,6 +115,9 @@ STEP5_TS = {
 }
 STEP5_BASELINES = ["evflownet-cnt", "evflownet-voxel5"]
 VALIDATION = {"enabled": True, "path": "${EVFLOW_DATA}/validation_mvsec/", "resolution": [256, 256], "batch_size": 8}
+# Step 5b: second validation set, MVSEC outdoor_day2 (the MVSEC training sequence, not used for testing),
+# made with tools/convert_mvsec_raw.py + experiments/make_val_chunks.py --chunks 8
+VALIDATION_OD2 = {"enabled": True, "path": "${EVFLOW_DATA}/validation_od2/", "resolution": [256, 256], "batch_size": 8}
 # Step 5b: intermediate checkpoints after epochs 0..dense-1 and every `every` epochs (and the last one)
 CHECKPOINTS = {"dense": 10, "every": 10}
 
@@ -185,6 +189,7 @@ def build():
         config = copy.deepcopy(train[name])
         config["experiment"] = "step5b"
         config["checkpoints"] = copy.deepcopy(CHECKPOINTS)
+        config["validation_extra"] = {"od2": copy.deepcopy(VALIDATION_OD2)}
         train[name.replace("s5_", "s5b_", 1)] = config
 
     # MVSEC with ground truth, as in the paper (configs/eval_MVSEC.yml without the display).
