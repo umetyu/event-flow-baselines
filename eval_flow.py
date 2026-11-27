@@ -94,6 +94,13 @@ def test(args, config_parser):
         assert "metrics" in config.keys(), "EVFLOW_FLOW_DT_REF needs metrics"
         config["metrics"]["flow_dt_ref"] = dt_ref
 
+    # Intermediate weights of a run (artifacts/checkpoints/<name>.pth, e.g. epoch_0002 or val_best) instead
+    # of those of the lowest training loss. Stored with the evaluation settings, reported as a separate suite.
+    checkpoint = os.environ.get("EVFLOW_CHECKPOINT", "") or None
+    if checkpoint:
+        assert "metrics" in config.keys(), "EVFLOW_CHECKPOINT needs metrics"
+        config["metrics"]["checkpoint"] = checkpoint
+
     if not args.debug:
         # create directory for inference results
         path_results = create_model_dir(args.path_results, args.runid)
@@ -114,7 +121,7 @@ def test(args, config_parser):
 
     # model initialization and settings
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    model = load_model(args.runid, model, device, strict=True)
+    model = load_model(args.runid, model, device, strict=True, checkpoint=checkpoint)
     model.eval()
 
     # estimators without weights that optimize the flow of every window (models/optimization.py)

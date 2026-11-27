@@ -49,6 +49,7 @@ def already_done(path_results, run_id, config):
         wanted = yaml.safe_load(fid)["data"]
     stride = int(os.environ.get("EVFLOW_EVAL_STRIDE", "1"))
     dt_ref = float(os.environ.get("EVFLOW_FLOW_DT_REF", "0") or 0)
+    checkpoint = os.environ.get("EVFLOW_CHECKPOINT", "") or None
     for path in glob.glob(os.path.join(path_results, run_id, "eval_*.yml")):
         with open(path) as fid:
             done_config = yaml.safe_load(fid)
@@ -57,6 +58,7 @@ def already_done(path_results, run_id, config):
         same = (
             stride == int(done_config.get("metrics", {}).get("stride", 1))
             and dt_ref == float(done_config.get("metrics", {}).get("flow_dt_ref", 0))
+            and checkpoint == (done_config.get("metrics", {}).get("checkpoint", None) or None)
             and os.path.basename(os.path.normpath(str(done.get("path", "")))) == os.path.basename(os.path.normpath(wanted["path"]))
             and done.get("mode") == wanted["mode"]
             and done.get("window") == wanted["window"]
@@ -78,6 +80,11 @@ def main():
     parser.add_argument("--path_results", default=os.path.join(ROOT, "results_inference") + "/")
     parser.add_argument("--config_dir", default=os.path.join(ROOT, "configs", "exp"))
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--checkpoints", nargs="*", default=[],
+        help='intermediate weights to evaluate (names in artifacts/checkpoints/, "all" = every one); '
+        "default: only the weights of the lowest training loss",
+    )
     args = parser.parse_args()
 
     runs = select_runs(list_runs(args.path_mlflow), args.runs, args.models)
@@ -85,8 +92,24 @@ def main():
         raise SystemExit("No runs match {} (models: {}) in {}".format(args.runs, args.models or "all", args.path_mlflow))
 
     failed = []
+    jobs = []
     for run in runs:
-        label = run["name"] or run["run_id"]
+        if not args.checkpoints:
+            jobs.append((run, None))
+            continue
+        ckpt_dir = os.path.join(run["dir"], "artifacts", "checkpoints")
+        available = sorted(f[:-4] for f in os.listdir(ckpt_dir) if f.endswith(".pth")) if os.path.isdir(ckpt_dir) else []
+        wanted = available if "all" in args.checkpoints else [c for c in args.checkpoints if c in available]
+        if not wanted:
+            print("SKIP {}: no checkpoints {} in {}".format(run["name"] or run["run_id"], args.checkpoints, ckpt_dir))
+        jobs += [(run, c) for c in wanted]
+
+    for run, checkpoint in jobs:
+        label = (run["name"] or run["run_id"]) + (" [{}]".format(checkpoint) if checkpoint else "")
+        if checkpoint:
+            os.environ["EVFLOW_CHECKPOINT"] = checkpoint
+        else:
+            os.environ.pop("EVFLOW_CHECKPOINT", None)
         for suite in args.suites:
             config_name = suite_config(suite, run)
             config = os.path.join(args.config_dir, config_name + ".yml")

@@ -41,6 +41,9 @@ def suite_name(config):
     dt_ref = float(config.get("metrics", {}).get("flow_dt_ref", 0) or 0)
     if dt_ref > 0:
         suffix += "_dtref{:g}ms".format(1000 * dt_ref)
+    checkpoint = config.get("metrics", {}).get("checkpoint", None)
+    if checkpoint:
+        suffix += "_ckpt-" + checkpoint
     if mode in ["gtflow_dt1", "gtflow_dt4"]:
         return "{}_{}{}".format(folder, mode[-3:], suffix)
     return folder + suffix
@@ -129,7 +132,8 @@ def main():
         writer.writerow(["experiment", "run", "run_id", "model", "input", "window", "suite", "metric", "sequence", "value"])
         writer.writerows(table)
 
-    columns = sorted({(suite, metric) for (_, suite, metric) in groups})
+    # per-epoch checkpoints are only in runs.csv (experiments/plot_ckpt_aee.py), not in the table
+    columns = sorted({(suite, metric) for (_, suite, metric) in groups if "_ckpt-epoch_" not in suite})
     lines = ["# Results", "", "Mean over sequences per run; `±` is the standard deviation over seeds.", ""]
     lines.append("| config | model | input | window | params | " + " | ".join("{} {}".format(*c) for c in columns) + " |")
     lines.append("|" + "---|" * (5 + len(columns)))
@@ -155,7 +159,7 @@ def main():
                 entry, own = reference["literature"][key], False
             else:
                 continue
-            if "_stride" in suite or "_dtref" in suite:
+            if "_stride" in suite or "_dtref" in suite or "_ckpt-" in suite:
                 continue  # only full, unmodified evaluations are compared with the paper
             dt = suite[-3:]
             for i, name in enumerate(reference["sequences"]):

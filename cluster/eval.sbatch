@@ -17,6 +17,7 @@
 # Add REFERENCE=1 to compare the MVSEC AEE with Table 1 of the paper.
 # STRIDE=n scores only every n-th ground-truth map (to compare with strided optimizer runs).
 # FLOW_DT_REF=s (seconds) rescales the output by dt_input / s (time-surface diagnostic, separate suite).
+# CHECKPOINTS="all" (or names such as "epoch_0002 val_best") evaluates intermediate weights (step 5b).
 set -eo pipefail
 cd "${SLURM_SUBMIT_DIR:?}"
 source cluster/env.sh
@@ -28,7 +29,7 @@ nvidia-smi
 status=0
 # shellcheck disable=SC2086
 "$BENCHMARK_PYTHON" -u experiments/evaluate.py --suites $SUITES --runs ${RUNS:-} --models ${MODELS:-} \
-    --path_mlflow "$EVFLOW_MLRUNS" || status=$?
+    ${CHECKPOINTS:+--checkpoints $CHECKPOINTS} --path_mlflow "$EVFLOW_MLRUNS" || status=$?
 # shellcheck disable=SC2086
 # the tables always cover every run, so that jobs for different runs do not overwrite each other's rows
 "$BENCHMARK_PYTHON" experiments/collect.py --path_mlflow "$EVFLOW_MLRUNS" ${REFERENCE:+--reference}

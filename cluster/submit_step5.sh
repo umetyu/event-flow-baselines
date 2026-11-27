@@ -2,6 +2,7 @@
 # Step 5 (time-surface input), from the repository root:
 #   bash cluster/submit_step5.sh                      # the two time-surface runs (ts5, ts3)
 #   bash cluster/submit_step5.sh configs/exp/s5_*.yml # also the count / voxel5 baselines with validation
+#   bash cluster/submit_step5.sh configs/exp/s5b_*.yml  # overfitting check: also every checkpoint on MVSEC dt=1
 # 1. cuts the MVSEC validation chunks once (experiments/make_val_chunks.py), if they are missing
 # 2. submits one training job per config (100 epochs, training + validation loss every epoch)
 # 3. chains an MVSEC evaluation (dt=1 and dt=4) after each training job
@@ -27,4 +28,9 @@ for config in "${configs[@]}"; do
     evaluation=$(sbatch --parsable --dependency=afterok:"$train" --kill-on-invalid-dep=yes \
         --job-name="eval-$name" --export=ALL,SUITES="mvsec_dt1 mvsec_dt4",RUNS="$name" cluster/eval.sbatch)
     echo "$name: training $train, evaluation $evaluation (after the training)"
+    if grep -q "^checkpoints:" "$config"; then
+        ckpt=$(sbatch --parsable --dependency=afterany:"$evaluation" \
+            --job-name="ckpt-$name" --export=ALL,SUITES="mvsec_dt1",RUNS="$name",CHECKPOINTS="all" cluster/eval.sbatch)
+        echo "$name: checkpoint evaluation $ckpt (after the evaluation)"
+    fi
 done

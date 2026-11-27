@@ -25,6 +25,9 @@ Step 5 (time surfaces): non-recurrent EV-FlowNet with a signed multi time-consta
     plus the count and voxel5 baselines again. Same training as step 2, and in addition a validation
     loss on MVSEC chunks after every epoch (experiments/make_val_chunks.py). The validation loss is
     only monitored; the saved weights are still those of the lowest training loss.
+Step 5b (overfitting check): ts5pol, count and voxel5 again with intermediate checkpoints (every epoch
+    for the first 10 epochs, then every 10th) and the weights of the lowest validation loss, so that the
+    MVSEC AEE can be measured per epoch (experiments/plot_ckpt_aee.py).
 """
 
 import argparse
@@ -111,6 +114,8 @@ STEP5_TS = {
 }
 STEP5_BASELINES = ["evflownet-cnt", "evflownet-voxel5"]
 VALIDATION = {"enabled": True, "path": "${EVFLOW_DATA}/validation_mvsec/", "resolution": [256, 256], "batch_size": 8}
+# Step 5b: intermediate checkpoints after epochs 0..dense-1 and every `every` epochs (and the last one)
+CHECKPOINTS = {"dense": 10, "every": 10}
 
 
 def train_config(tag, window, seed, experiment):
@@ -176,6 +181,11 @@ def build():
         config = train_config(tag, 1000, 0, "step5")
         config["validation"] = copy.deepcopy(VALIDATION)
         train["s5_{}_w1000_seed0".format(tag)] = config
+    for name in ["s5_evflownet-ts5pol_w1000_seed0", "s5_evflownet-cnt_w1000_seed0", "s5_evflownet-voxel5_w1000_seed0"]:
+        config = copy.deepcopy(train[name])
+        config["experiment"] = "step5b"
+        config["checkpoints"] = copy.deepcopy(CHECKPOINTS)
+        train[name.replace("s5_", "s5b_", 1)] = config
 
     # MVSEC with ground truth, as in the paper (configs/eval_MVSEC.yml without the display).
     # The paper has no validation set: training uses UZH-FPV only and MVSEC is used for evaluation only.

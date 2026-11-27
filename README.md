@@ -233,6 +233,16 @@ python experiments/plot_loss.py --runs s5_evflownet-ts5_w1000_seed0 s5_evflownet
 
 学習ログの最初の方に、τごとの値の分布(`time surface statistics`)が出る。あるチャンネルがほぼ0かほぼ1ばかりなら、そのτは学習データに合っていない。
 
+**step 5b(過学習の確認)**: ts5pol・count・voxel5を、途中の重みも残して学習し直す(最初の10 epochは毎epoch、その後は10 epochごと。加えてval_loss最小の重み `val_best`)。チェックポイントは1本あたり約1.1 GB。学習後に通常の評価(dt1/dt4)、その後に全チェックポイントのMVSEC dt1評価が自動で走る。
+
+```bash
+bash cluster/submit_step5.sh configs/exp/s5b_*.yml
+python experiments/plot_ckpt_aee.py --runs s5b_evflownet-ts5pol_w1000_seed0 s5b_evflownet-cnt_w1000_seed0 \
+    s5b_evflownet-voxel5_w1000_seed0 --labels "time surface 5tau (pol)" count "voxel 5 bins" --out results/ckpt_aee.png
+```
+
+チェックポイントの結果は `results/runs.csv` に `MVSEC_dt1_ckpt-epoch_0002` のようなsuite名で入る(summary.mdには `val_best` だけ載せる)。MVSECはテストデータなので、ここで選んだ重みを論文の数値として報告しない。
+
 ### AffineObjects(初期設定のみ)
 
 ```bash

@@ -63,22 +63,34 @@ def get_run_params(runid):
         return params
 
 
-def find_model_file(runid):
+def checkpoint_relpath(checkpoint=None):
+    """
+    Path of a set of weights inside the artifacts of a run: the lowest training loss (default,
+    model/data/model.pth), or a named checkpoint (checkpoints/<name>.pth, e.g. "epoch_0002", "val_best").
+    """
+
+    if not checkpoint:
+        return os.path.join("model", "data", "model.pth")
+    return os.path.join("checkpoints", checkpoint + ".pth")
+
+
+def find_model_file(runid, checkpoint=None):
     """
     Locate the weights of an MLflow run. The artifact location stored in the run metadata is tried
     first; if the mlruns folder was moved/downloaded from another machine (e.g. the pretrained
     models), we fall back to searching the current tracking directory.
     """
 
+    rel = checkpoint_relpath(checkpoint)
     candidates = []
     try:
         run = mlflow.get_run(runid)
-        candidates.append(os.path.join(_uri_to_path(run.info.artifact_uri), "model", "data", "model.pth"))
+        candidates.append(os.path.join(_uri_to_path(run.info.artifact_uri), rel))
     except Exception:
         pass
 
     root = _uri_to_path(mlflow.get_tracking_uri())
-    candidates += sorted(glob.glob(os.path.join(root, "*", runid, "artifacts", "model", "data", "model.pth")))
+    candidates += sorted(glob.glob(os.path.join(root, "*", runid, "artifacts", rel)))
 
     for candidate in candidates:
         if os.path.isfile(candidate):
@@ -86,7 +98,7 @@ def find_model_file(runid):
     return None
 
 
-def load_model(prev_runid, model, device, strict=False):
+def load_model(prev_runid, model, device, strict=False, checkpoint=None):
     """
     :param strict: raise if the weights cannot be found (always used for evaluation, so that we never
     report metrics of a randomly initialized network by accident)
@@ -97,9 +109,11 @@ def load_model(prev_runid, model, device, strict=False):
             raise FileNotFoundError("No MLflow run specified.")
         return model
 
-    model_dir = find_model_file(prev_runid)
+    model_dir = find_model_file(prev_runid, checkpoint)
     if model_dir is None:
-        msg = "No model found for run " + prev_runid + " in " + mlflow.get_tracking_uri()
+        msg = "No model {}found for run {} in {}".format(
+            "(checkpoint {}) ".format(checkpoint) if checkpoint else "", prev_runid, mlflow.get_tracking_uri()
+        )
         if strict:
             raise FileNotFoundError(msg)
         print(msg + "\n")
@@ -129,18 +143,19 @@ def create_model_dir(path_results, runid):
     return path_results
 
 
-def save_model(model):
+def save_model(model, checkpoint=None):
     """
     Stores the state dict at <run>/artifacts/model/data/model.pth (same location as the original
-    mlflow.pytorch.log_model call, but independent of the MLflow/PyTorch version). The file is
-    written atomically so that a job killed mid-write cannot corrupt the best checkpoint.
+    mlflow.pytorch.log_model call, but independent of the MLflow/PyTorch version), or at
+    <run>/artifacts/checkpoints/<checkpoint>.pth. The file is written atomically so that a job killed
+    mid-write cannot corrupt the best checkpoint.
     """
 
-    path = os.path.join(_uri_to_path(mlflow.get_artifact_uri()), "model", "data")
-    os.makedirs(path, exist_ok=True)
-    tmp = os.path.join(path, "model.pth.tmp")
+    target = os.path.join(_uri_to_path(mlflow.get_artifact_uri()), checkpoint_relpath(checkpoint))
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    tmp = target + ".tmp"
     torch.save(model.state_dict(), tmp)
-    os.replace(tmp, os.path.join(path, "model.pth"))
+    os.replace(tmp, target)
 
 
 def save_csv(data, fname):

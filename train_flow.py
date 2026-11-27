@@ -127,6 +127,20 @@ def validate(model, config_val, device):
     return total / max(samples, 1)
 
 
+def checkpoint_epoch(epoch, config):
+    """
+    Whether to keep the weights after this epoch (config "checkpoints": every epoch below `dense`, then
+    every `every` epochs, and the last epoch). Off without the config block.
+    """
+
+    ckpt = config.get("checkpoints", None)
+    if not ckpt:
+        return False
+    dense, every = int(ckpt.get("dense", 0)), int(ckpt.get("every", 0))
+    last = epoch == config["loader"]["n_epochs"] - 1
+    return epoch < dense or (every > 0 and (epoch + 1) % every == 0) or last
+
+
 def update_ts_stats(stats, inputs, config, num_passes=500):
     """
     Accumulates, per time constant, the mean |value| and the share of pixels above 0.05 and 0.95 over
@@ -230,6 +244,7 @@ def train(args, config_parser):
     # simulation variables
     train_loss = 0
     best_loss = 1.0e6
+    best_val_loss = 1.0e6
     end_train = False
     grads_w = []
     t_epoch = time.time()
@@ -258,6 +273,13 @@ def train(args, config_parser):
                     val_loss = validate(model, config_val, device)
                     mlflow.log_metric("val_loss", val_loss, step=data.epoch)
                     val_text = " | val_loss {:.6f} ({:.0f} s)".format(val_loss, time.time() - t_val)
+                    if config.get("checkpoints", None) and val_loss < best_val_loss:
+                        # weights of the lowest validation loss (diagnostic: the validation data are
+                        # MVSEC chunks of the test sequences, so not for reporting)
+                        with torch.no_grad():
+                            save_model(model, "val_best")
+                        best_val_loss = val_loss
+                        val_text += " (val best)"
                 print(
                     "Epoch {:04d} done | loss {:.6f} | {:.0f} s{}".format(
                         data.epoch, train_loss / (data.samples + 1), epoch_time, val_text
@@ -270,6 +292,8 @@ def train(args, config_parser):
                     if train_loss / (data.samples + 1) < best_loss:
                         save_model(model)
                         best_loss = train_loss / (data.samples + 1)
+                    if checkpoint_epoch(data.epoch, config):
+                        save_model(model, "epoch_{:04d}".format(data.epoch))
 
                 data.epoch += 1
                 data.samples = 0
