@@ -28,6 +28,15 @@ if grep -q "validation_od2" "${configs[@]}"; then
             echo "Missing $EVFLOW_DATA/MVSEC_od2/outdoor_day2_data.h5: run tools/convert_mvsec_raw.py first" >&2; exit 2; }
         "$BENCHMARK_PYTHON" experiments/make_val_chunks.py --src "$EVFLOW_DATA/MVSEC_od2" --dst "$od2_dir" --chunks 8
     fi
+    "$BENCHMARK_PYTHON" - "$od2_dir" <<'PY'
+import glob, sys, h5py
+for f in sorted(glob.glob(sys.argv[1] + "/*.h5")):
+    with h5py.File(f, "r") as h:
+        mx, my = int(h["events/xs"][:].max()), int(h["events/ys"][:].max())
+    if mx > 255 or my > 255:
+        sys.exit("{}: events up to x={} y={} (not cropped to 256x256). Delete $EVFLOW_DATA/MVSEC_od2 and "
+                 "$EVFLOW_DATA/validation_od2 and convert again with tools/convert_mvsec_raw.py".format(f, mx, my))
+PY
     echo "validation chunks (outdoor_day2): $(ls "$od2_dir"/*.h5 | wc -l) files in $od2_dir"
 fi
 
